@@ -1,5 +1,5 @@
 [package]
-name = "anvil"
+name = "starland"
 version = "0.0.1"
 authors = ["Victor Berger <victor.berger@m4x.org>", "Drakulix (Victoria Brekenfeld)"]
 license = "MIT"
@@ -19,9 +19,10 @@ slog-async = "2.2"
 slog-stdlog = "4.1.0"
 slog-scope = "4.4.0"
 xkbcommon = "0.5.0"
+gbm = "0.8.0"
 
 [dependencies.smithay]
-path = ".."
+path = "smithay"
 default-features = false
 features = [ "desktop", "wayland_frontend", "slog-stdlog" ]
 

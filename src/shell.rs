@@ -448,7 +448,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
             // 3) multiply the percentage by new window width
             // 4) by doing that, drag will look a lot more natural
             //
-            // but for anvil needs setting location to pointer location is fine
+            // but for starland needs setting location to pointer location is fine
             let pos = pointer.current_location();
             initial_window_location = (pos.x as i32, pos.y as i32).into();
         }

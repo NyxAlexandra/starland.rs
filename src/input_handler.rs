@@ -402,7 +402,7 @@ impl<Backend: crate::state::Backend> AnvilState<Backend> {
             }
             InputEvent::PointerButton { event } => self.on_pointer_button::<B>(event),
             InputEvent::PointerAxis { event } => self.on_pointer_axis::<B>(dh, event),
-            _ => (), // other events are not handled in anvil (yet)
+            _ => (), // other events are not handled in starland (yet)
         }
     }
 
@@ -571,7 +571,7 @@ impl AnvilState<UdevData> {
                 }
             }
             _ => {
-                // other events are not handled in anvil (yet)
+                // other events are not handled in starland (yet)
             }
         }
     }
