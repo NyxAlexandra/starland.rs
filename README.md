@@ -2,6 +2,6 @@
 
 TODO: summary
 
-![[docs/showcase.png]]
+![](docs/showcase.png)
 
 [todo](TODO.md) | [docs](docs/README.md)
