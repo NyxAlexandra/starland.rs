@@ -1,7 +1,7 @@
 # starland
 
-{summary}
+TODO: summary
 
 ![[docs/showcase.png]]
 
-[[TODO.md]] | [[docs/README.md]]
+[todo](TODO.md) | [docs](docs/README.md)
