@@ -104,10 +104,10 @@
 				defaultCrateOverrides = pkgs.defaultCrateOverrides // {
 					${name} = oldAttrs: {
 						inherit buildInputs nativeBuildInputs;
-					} // buildEnvVars;
+					}
 
 					postFixup = ''
-						patchelf --set-rpath ${rpath} $out/bin/anvil
+						patchelf --set-rpath ${rpath} $out/bin/starland
 					'';
 				};
 			};
