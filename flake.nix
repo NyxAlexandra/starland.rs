@@ -83,9 +83,7 @@
 				glibc
 			];
 
-			lib = pkgs.lib;
-
-			rpath = lib.makeLibraryPath deps;
+			rpath = pkgs.lib.makeLibraryPath deps;
 
 			# Needed by rust-analyzer to function
 			RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
