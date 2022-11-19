@@ -36,10 +36,6 @@
 		# RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
 		# PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
 
-		buildEnvVars = {
-			# inherit PKG_CONFIG_PATH RUST_SRC_PATH;
-		};
-
 		pkgs = import nixpkgs {
 			inherit system;
 			overlays = [
@@ -90,6 +86,9 @@
 			lib = pkgs.lib;
 
 			rpath = lib.makeLibraryPath deps;
+
+			# Needed by rust-analyzer to function
+			RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
 			
 			nativeBuildInputs = with pkgs; [] ++ deps;
 
