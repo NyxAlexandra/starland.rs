@@ -1,6 +1,6 @@
 use std::{collections::HashMap, convert::TryFrom, os::unix::net::UnixStream, sync::Arc};
 
-use crate::AnvilState;
+use crate::StarlandState;
 use smithay::{
     desktop::{Kind, Space, Window, X11Surface},
     reexports::wayland_server::{protocol::wl_surface::WlSurface, Client, DisplayHandle, Resource},
@@ -21,7 +21,7 @@ use x11rb::{
     rust_connection::{DefaultStream, RustConnection},
 };
 
-impl<BackendData: 'static> AnvilState<BackendData> {
+impl<BackendData: 'static> StarlandState<BackendData> {
     pub fn start_xwayland(&mut self) {
         if let Err(e) = self.xwayland.start(self.handle.clone()) {
             error!(self.log, "Failed to start XWayland: {}", e);

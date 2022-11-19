@@ -1,6 +1,6 @@
 use std::{convert::TryInto, process::Command, sync::atomic::Ordering};
 
-use crate::{focus::FocusTarget, shell::FullscreenSurface, AnvilState};
+use crate::{focus::FocusTarget, shell::FullscreenSurface, StarlandState};
 
 #[cfg(feature = "udev")]
 use crate::udev::UdevData;
@@ -49,7 +49,7 @@ use smithay::{
     },
 };
 
-impl<Backend> AnvilState<Backend> {
+impl<Backend> StarlandState<Backend> {
     fn process_common_key_action(&mut self, action: KeyAction) {
         match action {
             KeyAction::None => (),
@@ -339,7 +339,7 @@ impl<Backend> AnvilState<Backend> {
 }
 
 #[cfg(any(feature = "winit", feature = "x11"))]
-impl<Backend: crate::state::Backend> AnvilState<Backend> {
+impl<Backend: crate::state::Backend> StarlandState<Backend> {
     pub fn process_input_event_windowed<B: InputBackend>(
         &mut self,
         dh: &DisplayHandle,
@@ -433,7 +433,7 @@ impl<Backend: crate::state::Backend> AnvilState<Backend> {
 }
 
 #[cfg(feature = "udev")]
-impl AnvilState<UdevData> {
+impl StarlandState<UdevData> {
     pub fn process_input_event<B: InputBackend>(&mut self, dh: &DisplayHandle, event: InputEvent<B>) {
         match event {
             InputEvent::Keyboard { event, .. } => match self.keyboard_key_to_action::<B>(event) {
@@ -818,22 +818,15 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::VtSwitch(
             (keysym - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
         ))
-
     } else if modifiers.logo && keysym == xkb::KEY_Return {
         // run terminal
         Some(KeyAction::Run("weston-terminal".into()))
-
     } else if modifiers.logo && (xkb::KEY_1..=xkb::KEY_9).contains(&keysym) {
         Some(KeyAction::Screen((keysym - xkb::KEY_1) as usize))
-
     } else if modifiers.logo && modifiers.shift && keysym == xkb::KEY_M {
         Some(KeyAction::ScaleDown)
-
     } else if modifiers.logo && modifiers.shift && keysym == xkb::KEY_P {
         Some(KeyAction::ScaleUp)
-    
-    // Tiling
-
     } else {
         None
     }

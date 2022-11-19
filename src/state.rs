@@ -1,5 +1,5 @@
 use std::{
-    os::unix::prelude::AsRawFd,
+    os::unix::io::{AsRawFd, OwnedFd},
     sync::{atomic::AtomicBool, Arc, Mutex},
     time::Duration,
 };
@@ -7,18 +7,21 @@ use std::{
 use smithay::{
     backend::renderer::element::{default_primary_scanout_output_compare, RenderElementStates},
     delegate_compositor, delegate_data_device, delegate_input_method_manager,
-    delegate_keyboard_shortcuts_inhibit, delegate_layer_shell, delegate_output, delegate_primary_selection,
-    delegate_seat, delegate_shm, delegate_tablet_manager, delegate_text_input_manager, delegate_viewporter,
-    delegate_virtual_keyboard_manager, delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_keyboard_shortcuts_inhibit, delegate_layer_shell, delegate_output, delegate_presentation,
+    delegate_primary_selection, delegate_seat, delegate_shm, delegate_tablet_manager,
+    delegate_text_input_manager, delegate_viewporter, delegate_virtual_keyboard_manager,
+    delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
     desktop::{
-        utils::{surface_primary_scanout_output, update_surface_primary_scanout_output},
+        utils::{
+            surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
+            update_surface_primary_scanout_output, OutputPresentationFeedback,
+        },
         PopupManager, Space, Window,
     },
     input::{keyboard::XkbConfig, pointer::CursorImageStatus, Seat, SeatHandler, SeatState},
     output::Output,
     reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
-        io_lifetimes::OwnedFd,
         wayland_protocols::xdg::decoration::{
             self as xdg_decoration, zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
         },
@@ -28,7 +31,7 @@ use smithay::{
             Display, DisplayHandle, Resource,
         },
     },
-    utils::{Logical, Point},
+    utils::{Clock, Logical, Monotonic, Point},
     wayland::{
         compositor::CompositorState,
         data_device::{
@@ -40,6 +43,7 @@ use smithay::{
             KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor,
         },
         output::OutputManagerState,
+        presentation::PresentationState,
         primary_selection::{set_primary_focus, PrimarySelectionHandler, PrimarySelectionState},
         seat::WaylandFocus,
         shell::{
@@ -68,8 +72,8 @@ use crate::xwayland::X11State;
 use smithay::xwayland::{XWayland, XWaylandEvent};
 
 pub struct CalloopData<BackendData: 'static> {
-    pub state: AnvilState<BackendData>,
-    pub display: Display<AnvilState<BackendData>>,
+    pub state: StarlandState<BackendData>,
+    pub display: Display<StarlandState<BackendData>>,
 }
 
 #[derive(Debug, Default)]
@@ -82,7 +86,7 @@ impl ClientData for ClientState {
 }
 
 #[derive(Debug)]
-pub struct AnvilState<BackendData: 'static> {
+pub struct StarlandState<BackendData: 'static> {
     pub backend_data: BackendData,
     pub socket_name: Option<String>,
     pub display_handle: DisplayHandle,
@@ -99,13 +103,14 @@ pub struct AnvilState<BackendData: 'static> {
     pub layer_shell_state: WlrLayerShellState,
     pub output_manager_state: OutputManagerState,
     pub primary_selection_state: PrimarySelectionState,
-    pub seat_state: SeatState<AnvilState<BackendData>>,
+    pub seat_state: SeatState<StarlandState<BackendData>>,
     pub keyboard_shortcuts_inhibit_state: KeyboardShortcutsInhibitState,
     pub shm_state: ShmState,
     pub viewporter_state: ViewporterState,
     pub xdg_activation_state: XdgActivationState,
     pub xdg_decoration_state: XdgDecorationState,
     pub xdg_shell_state: XdgShellState,
+    pub presentation_state: PresentationState,
 
     pub dnd_icon: Option<WlSurface>,
     pub log: slog::Logger,
@@ -115,8 +120,8 @@ pub struct AnvilState<BackendData: 'static> {
     pub pointer_location: Point<f64, Logical>,
     pub cursor_status: Arc<Mutex<CursorImageStatus>>,
     pub seat_name: String,
-    pub seat: Seat<AnvilState<BackendData>>,
-    pub start_time: std::time::Instant,
+    pub seat: Seat<StarlandState<BackendData>>,
+    pub clock: Clock<Monotonic>,
 
     #[cfg(feature = "xwayland")]
     pub xwayland: XWayland,
@@ -124,17 +129,17 @@ pub struct AnvilState<BackendData: 'static> {
     pub x11_state: Option<X11State>,
 }
 
-delegate_compositor!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
+delegate_compositor!(@<BackendData: Backend + 'static> StarlandState<BackendData>);
 
-impl<BackendData> DataDeviceHandler for AnvilState<BackendData> {
+impl<BackendData> DataDeviceHandler for StarlandState<BackendData> {
     fn data_device_state(&self) -> &DataDeviceState {
         &self.data_device_state
     }
     fn send_selection(&mut self, _mime_type: String, _fd: OwnedFd) {
-        unreachable!("Anvil doesn't do server-side selections");
+        unreachable!("Starland doesn't do server-side selections");
     }
 }
-impl<BackendData> ClientDndGrabHandler for AnvilState<BackendData> {
+impl<BackendData> ClientDndGrabHandler for StarlandState<BackendData> {
     fn started(&mut self, _source: Option<WlDataSource>, icon: Option<WlSurface>, _seat: Seat<Self>) {
         self.dnd_icon = icon;
     }
@@ -142,34 +147,34 @@ impl<BackendData> ClientDndGrabHandler for AnvilState<BackendData> {
         self.dnd_icon = None;
     }
 }
-impl<BackendData> ServerDndGrabHandler for AnvilState<BackendData> {
+impl<BackendData> ServerDndGrabHandler for StarlandState<BackendData> {
     fn send(&mut self, _mime_type: String, _fd: OwnedFd) {
-        unreachable!("Anvil doesn't do server-side grabs");
+        unreachable!("Starland doesn't do server-side grabs");
     }
 }
-delegate_data_device!(@<BackendData: 'static> AnvilState<BackendData>);
+delegate_data_device!(@<BackendData: 'static> StarlandState<BackendData>);
 
-delegate_output!(@<BackendData: 'static> AnvilState<BackendData>);
+delegate_output!(@<BackendData: 'static> StarlandState<BackendData>);
 
-impl<BackendData> PrimarySelectionHandler for AnvilState<BackendData> {
+impl<BackendData> PrimarySelectionHandler for StarlandState<BackendData> {
     fn primary_selection_state(&self) -> &PrimarySelectionState {
         &self.primary_selection_state
     }
 }
-delegate_primary_selection!(@<BackendData: 'static> AnvilState<BackendData>);
+delegate_primary_selection!(@<BackendData: 'static> StarlandState<BackendData>);
 
-impl<BackendData> ShmHandler for AnvilState<BackendData> {
+impl<BackendData> ShmHandler for StarlandState<BackendData> {
     fn shm_state(&self) -> &ShmState {
         &self.shm_state
     }
 }
-delegate_shm!(@<BackendData: 'static> AnvilState<BackendData>);
+delegate_shm!(@<BackendData: 'static> StarlandState<BackendData>);
 
-impl<BackendData> SeatHandler for AnvilState<BackendData> {
+impl<BackendData> SeatHandler for StarlandState<BackendData> {
     type KeyboardFocus = FocusTarget;
     type PointerFocus = FocusTarget;
 
-    fn seat_state(&mut self) -> &mut SeatState<AnvilState<BackendData>> {
+    fn seat_state(&mut self) -> &mut SeatState<StarlandState<BackendData>> {
         &mut self.seat_state
     }
 
@@ -186,15 +191,15 @@ impl<BackendData> SeatHandler for AnvilState<BackendData> {
         *self.cursor_status.lock().unwrap() = image;
     }
 }
-delegate_seat!(@<BackendData: 'static> AnvilState<BackendData>);
+delegate_seat!(@<BackendData: 'static> StarlandState<BackendData>);
 
-delegate_tablet_manager!(@<BackendData: 'static> AnvilState<BackendData>);
+delegate_tablet_manager!(@<BackendData: 'static> StarlandState<BackendData>);
 
-delegate_text_input_manager!(@<BackendData: 'static> AnvilState<BackendData>);
+delegate_text_input_manager!(@<BackendData: 'static> StarlandState<BackendData>);
 
-delegate_input_method_manager!(@<BackendData: 'static> AnvilState<BackendData>);
+delegate_input_method_manager!(@<BackendData: 'static> StarlandState<BackendData>);
 
-impl<BackendData> KeyboardShortcutsInhibitHandler for AnvilState<BackendData> {
+impl<BackendData> KeyboardShortcutsInhibitHandler for StarlandState<BackendData> {
     fn keyboard_shortcuts_inhibit_state(&mut self) -> &mut KeyboardShortcutsInhibitState {
         &mut self.keyboard_shortcuts_inhibit_state
     }
@@ -205,13 +210,13 @@ impl<BackendData> KeyboardShortcutsInhibitHandler for AnvilState<BackendData> {
     }
 }
 
-delegate_keyboard_shortcuts_inhibit!(@<BackendData: 'static> AnvilState<BackendData>);
+delegate_keyboard_shortcuts_inhibit!(@<BackendData: 'static> StarlandState<BackendData>);
 
-delegate_virtual_keyboard_manager!(@<BackendData: 'static> AnvilState<BackendData>);
+delegate_virtual_keyboard_manager!(@<BackendData: 'static> StarlandState<BackendData>);
 
-delegate_viewporter!(@<BackendData: 'static> AnvilState<BackendData>);
+delegate_viewporter!(@<BackendData: 'static> StarlandState<BackendData>);
 
-impl<BackendData> XdgActivationHandler for AnvilState<BackendData> {
+impl<BackendData> XdgActivationHandler for StarlandState<BackendData> {
     fn activation_state(&mut self) -> &mut XdgActivationState {
         &mut self.xdg_activation_state
     }
@@ -247,9 +252,9 @@ impl<BackendData> XdgActivationHandler for AnvilState<BackendData> {
         // The request is cancelled
     }
 }
-delegate_xdg_activation!(@<BackendData: 'static> AnvilState<BackendData>);
+delegate_xdg_activation!(@<BackendData: 'static> StarlandState<BackendData>);
 
-impl<BackendData> XdgDecorationHandler for AnvilState<BackendData> {
+impl<BackendData> XdgDecorationHandler for StarlandState<BackendData> {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
         use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
         toplevel.with_pending_state(|state| {
@@ -260,19 +265,22 @@ impl<BackendData> XdgDecorationHandler for AnvilState<BackendData> {
     fn request_mode(&mut self, _toplevel: ToplevelSurface, _mode: DecorationMode) {}
     fn unset_mode(&mut self, _toplevel: ToplevelSurface) {}
 }
-delegate_xdg_decoration!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
+delegate_xdg_decoration!(@<BackendData: Backend + 'static> StarlandState<BackendData>);
 
-delegate_xdg_shell!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
-delegate_layer_shell!(@<BackendData: 'static> AnvilState<BackendData>);
+delegate_xdg_shell!(@<BackendData: Backend + 'static> StarlandState<BackendData>);
+delegate_layer_shell!(@<BackendData: 'static> StarlandState<BackendData>);
+delegate_presentation!(@<BackendData: 'static> StarlandState<BackendData>);
 
-impl<BackendData: Backend + 'static> AnvilState<BackendData> {
+impl<BackendData: Backend + 'static> StarlandState<BackendData> {
     pub fn init(
-        display: &mut Display<AnvilState<BackendData>>,
+        display: &mut Display<StarlandState<BackendData>>,
         handle: LoopHandle<'static, CalloopData<BackendData>>,
         backend_data: BackendData,
         log: slog::Logger,
         listen_on_socket: bool,
-    ) -> AnvilState<BackendData> {
+    ) -> StarlandState<BackendData> {
+        let clock = Clock::new().expect("failed to initialize clock");
+
         // init wayland clients
         let socket_name = if listen_on_socket {
             let source = ListeningSocketSource::new_auto(log.clone()).unwrap();
@@ -321,6 +329,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let xdg_activation_state = XdgActivationState::new::<Self, _>(&dh, log.clone());
         let xdg_decoration_state = XdgDecorationState::new::<Self, _>(&dh, log.clone());
         let xdg_shell_state = XdgShellState::new::<Self, _>(&dh, log.clone());
+        let presentation_state = PresentationState::new::<Self>(&dh, clock.id() as u32);
         TextInputManagerState::new::<Self>(&dh);
         InputMethodManagerState::new::<Self>(&dh);
         VirtualKeyboardManagerState::new::<Self, _>(&dh, |_client| true);
@@ -362,7 +371,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             xwayland
         };
 
-        AnvilState {
+        StarlandState {
             backend_data,
             display_handle: display.handle(),
             socket_name,
@@ -382,6 +391,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             xdg_activation_state,
             xdg_decoration_state,
             xdg_shell_state,
+            presentation_state,
             dnd_icon: None,
             log,
             suppressed_keys: Vec::new(),
@@ -389,48 +399,81 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             cursor_status,
             seat_name,
             seat,
-            start_time: std::time::Instant::now(),
+            clock,
             #[cfg(feature = "xwayland")]
             xwayland,
             #[cfg(feature = "xwayland")]
             x11_state: None,
         }
     }
+}
 
-    pub fn send_frames(&self, output: &Output, render_element_states: &RenderElementStates) {
-        let time = self.start_time.elapsed();
-        let throttle = Some(Duration::from_secs(1));
+pub fn post_repaint(
+    output: &Output,
+    render_element_states: &RenderElementStates,
+    space: &Space<Window>,
+    time: impl Into<Duration>,
+) {
+    let time = time.into();
+    let throttle = Some(Duration::from_secs(1));
 
-        self.space.elements().for_each(|window| {
-            window.with_surfaces(|surface, states| {
-                update_surface_primary_scanout_output(
-                    surface,
-                    output,
-                    states,
-                    render_element_states,
-                    default_primary_scanout_output_compare,
-                )
-            });
-
-            if self.space.outputs_for_element(window).contains(output) {
-                window.send_frame(output, time, throttle, surface_primary_scanout_output);
-            }
+    space.elements().for_each(|window| {
+        window.with_surfaces(|surface, states| {
+            update_surface_primary_scanout_output(
+                surface,
+                output,
+                states,
+                render_element_states,
+                default_primary_scanout_output_compare,
+            )
         });
-        let map = smithay::desktop::layer_map_for_output(output);
-        for layer_surface in map.layers() {
-            layer_surface.with_surfaces(|surface, states| {
-                update_surface_primary_scanout_output(
-                    surface,
-                    output,
-                    states,
-                    render_element_states,
-                    default_primary_scanout_output_compare,
-                )
-            });
 
-            layer_surface.send_frame(output, time, throttle, surface_primary_scanout_output);
+        if space.outputs_for_element(window).contains(output) {
+            window.send_frame(output, time, throttle, surface_primary_scanout_output);
         }
+    });
+    let map = smithay::desktop::layer_map_for_output(output);
+    for layer_surface in map.layers() {
+        layer_surface.with_surfaces(|surface, states| {
+            update_surface_primary_scanout_output(
+                surface,
+                output,
+                states,
+                render_element_states,
+                default_primary_scanout_output_compare,
+            )
+        });
+
+        layer_surface.send_frame(output, time, throttle, surface_primary_scanout_output);
     }
+}
+
+pub fn take_presentation_feedback(
+    output: &Output,
+    space: &Space<Window>,
+    render_element_states: &RenderElementStates,
+) -> OutputPresentationFeedback {
+    let mut output_presentation_feedback = OutputPresentationFeedback::new(output);
+
+    space.elements().for_each(|window| {
+        if space.outputs_for_element(window).contains(output) {
+            window.take_presentation_feedback(
+                &mut output_presentation_feedback,
+                surface_primary_scanout_output,
+                |surface, _| surface_presentation_feedback_flags_from_states(surface, render_element_states),
+            );
+        }
+    });
+    let map = smithay::desktop::layer_map_for_output(output);
+    for layer_surface in map.layers() {
+        layer_surface.take_presentation_feedback(
+            &mut output_presentation_feedback,
+            surface_primary_scanout_output,
+            |surface, _| surface_presentation_feedback_flags_from_states(surface, render_element_states),
+        );
+    }
+
+    output_presentation_feedback
 }
 
 pub trait Backend {

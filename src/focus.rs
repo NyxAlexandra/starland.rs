@@ -11,7 +11,7 @@ pub use smithay::{
     wayland::seat::WaylandFocus,
 };
 
-use crate::state::AnvilState;
+use crate::state::StarlandState;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FocusTarget {
@@ -36,75 +36,75 @@ impl From<FocusTarget> for WlSurface {
     }
 }
 
-impl<Backend> PointerTarget<AnvilState<Backend>> for FocusTarget {
-    fn enter(&self, seat: &Seat<AnvilState<Backend>>, data: &mut AnvilState<Backend>, event: &MotionEvent) {
+impl<Backend> PointerTarget<StarlandState<Backend>> for FocusTarget {
+    fn enter(&self, seat: &Seat<StarlandState<Backend>>, data: &mut StarlandState<Backend>, event: &MotionEvent) {
         match self {
             FocusTarget::Window(w) => PointerTarget::enter(w, seat, data, event),
-            FocusTarget::LayerSurface(l) => PointerTarget::enter(l.wl_surface(), seat, data, event),
+            FocusTarget::LayerSurface(l) => PointerTarget::enter(l, seat, data, event),
             FocusTarget::Popup(p) => PointerTarget::enter(p.wl_surface(), seat, data, event),
         }
     }
-    fn motion(&self, seat: &Seat<AnvilState<Backend>>, data: &mut AnvilState<Backend>, event: &MotionEvent) {
+    fn motion(&self, seat: &Seat<StarlandState<Backend>>, data: &mut StarlandState<Backend>, event: &MotionEvent) {
         match self {
             FocusTarget::Window(w) => PointerTarget::motion(w, seat, data, event),
-            FocusTarget::LayerSurface(l) => PointerTarget::motion(l.wl_surface(), seat, data, event),
+            FocusTarget::LayerSurface(l) => PointerTarget::motion(l, seat, data, event),
             FocusTarget::Popup(p) => PointerTarget::motion(p.wl_surface(), seat, data, event),
         }
     }
-    fn button(&self, seat: &Seat<AnvilState<Backend>>, data: &mut AnvilState<Backend>, event: &ButtonEvent) {
+    fn button(&self, seat: &Seat<StarlandState<Backend>>, data: &mut StarlandState<Backend>, event: &ButtonEvent) {
         match self {
             FocusTarget::Window(w) => PointerTarget::button(w, seat, data, event),
-            FocusTarget::LayerSurface(l) => PointerTarget::button(l.wl_surface(), seat, data, event),
+            FocusTarget::LayerSurface(l) => PointerTarget::button(l, seat, data, event),
             FocusTarget::Popup(p) => PointerTarget::button(p.wl_surface(), seat, data, event),
         }
     }
-    fn axis(&self, seat: &Seat<AnvilState<Backend>>, data: &mut AnvilState<Backend>, frame: AxisFrame) {
+    fn axis(&self, seat: &Seat<StarlandState<Backend>>, data: &mut StarlandState<Backend>, frame: AxisFrame) {
         match self {
             FocusTarget::Window(w) => PointerTarget::axis(w, seat, data, frame),
-            FocusTarget::LayerSurface(l) => PointerTarget::axis(l.wl_surface(), seat, data, frame),
+            FocusTarget::LayerSurface(l) => PointerTarget::axis(l, seat, data, frame),
             FocusTarget::Popup(p) => PointerTarget::axis(p.wl_surface(), seat, data, frame),
         }
     }
     fn leave(
         &self,
-        seat: &Seat<AnvilState<Backend>>,
-        data: &mut AnvilState<Backend>,
+        seat: &Seat<StarlandState<Backend>>,
+        data: &mut StarlandState<Backend>,
         serial: Serial,
         time: u32,
     ) {
         match self {
             FocusTarget::Window(w) => PointerTarget::leave(w, seat, data, serial, time),
-            FocusTarget::LayerSurface(l) => PointerTarget::leave(l.wl_surface(), seat, data, serial, time),
+            FocusTarget::LayerSurface(l) => PointerTarget::leave(l, seat, data, serial, time),
             FocusTarget::Popup(p) => PointerTarget::leave(p.wl_surface(), seat, data, serial, time),
         }
     }
 }
 
-impl<Backend> KeyboardTarget<AnvilState<Backend>> for FocusTarget {
+impl<Backend> KeyboardTarget<StarlandState<Backend>> for FocusTarget {
     fn enter(
         &self,
-        seat: &Seat<AnvilState<Backend>>,
-        data: &mut AnvilState<Backend>,
+        seat: &Seat<StarlandState<Backend>>,
+        data: &mut StarlandState<Backend>,
         keys: Vec<KeysymHandle<'_>>,
         serial: Serial,
     ) {
         match self {
             FocusTarget::Window(w) => KeyboardTarget::enter(w, seat, data, keys, serial),
-            FocusTarget::LayerSurface(l) => KeyboardTarget::enter(l.wl_surface(), seat, data, keys, serial),
+            FocusTarget::LayerSurface(l) => KeyboardTarget::enter(l, seat, data, keys, serial),
             FocusTarget::Popup(p) => KeyboardTarget::enter(p.wl_surface(), seat, data, keys, serial),
         }
     }
-    fn leave(&self, seat: &Seat<AnvilState<Backend>>, data: &mut AnvilState<Backend>, serial: Serial) {
+    fn leave(&self, seat: &Seat<StarlandState<Backend>>, data: &mut StarlandState<Backend>, serial: Serial) {
         match self {
             FocusTarget::Window(w) => KeyboardTarget::leave(w, seat, data, serial),
-            FocusTarget::LayerSurface(l) => KeyboardTarget::leave(l.wl_surface(), seat, data, serial),
+            FocusTarget::LayerSurface(l) => KeyboardTarget::leave(l, seat, data, serial),
             FocusTarget::Popup(p) => KeyboardTarget::leave(p.wl_surface(), seat, data, serial),
         }
     }
     fn key(
         &self,
-        seat: &Seat<AnvilState<Backend>>,
-        data: &mut AnvilState<Backend>,
+        seat: &Seat<StarlandState<Backend>>,
+        data: &mut StarlandState<Backend>,
         key: KeysymHandle<'_>,
         state: KeyState,
         serial: Serial,
@@ -112,9 +112,7 @@ impl<Backend> KeyboardTarget<AnvilState<Backend>> for FocusTarget {
     ) {
         match self {
             FocusTarget::Window(w) => KeyboardTarget::key(w, seat, data, key, state, serial, time),
-            FocusTarget::LayerSurface(l) => {
-                KeyboardTarget::key(l.wl_surface(), seat, data, key, state, serial, time)
-            }
+            FocusTarget::LayerSurface(l) => KeyboardTarget::key(l, seat, data, key, state, serial, time),
             FocusTarget::Popup(p) => {
                 KeyboardTarget::key(p.wl_surface(), seat, data, key, state, serial, time)
             }
@@ -122,16 +120,14 @@ impl<Backend> KeyboardTarget<AnvilState<Backend>> for FocusTarget {
     }
     fn modifiers(
         &self,
-        seat: &Seat<AnvilState<Backend>>,
-        data: &mut AnvilState<Backend>,
+        seat: &Seat<StarlandState<Backend>>,
+        data: &mut StarlandState<Backend>,
         modifiers: ModifiersState,
         serial: Serial,
     ) {
         match self {
             FocusTarget::Window(w) => KeyboardTarget::modifiers(w, seat, data, modifiers, serial),
-            FocusTarget::LayerSurface(l) => {
-                KeyboardTarget::modifiers(l.wl_surface(), seat, data, modifiers, serial)
-            }
+            FocusTarget::LayerSurface(l) => KeyboardTarget::modifiers(l, seat, data, modifiers, serial),
             FocusTarget::Popup(p) => KeyboardTarget::modifiers(p.wl_surface(), seat, data, modifiers, serial),
         }
     }

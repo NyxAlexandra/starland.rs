@@ -44,20 +44,20 @@ use smithay::{
 
 use crate::{
     focus::FocusTarget,
-    state::{AnvilState, Backend},
+    state::{StarlandState, Backend},
 };
 
 struct MoveSurfaceGrab<B: 'static> {
-    start_data: PointerGrabStartData<AnvilState<B>>,
+    start_data: PointerGrabStartData<StarlandState<B>>,
     window: Window,
     initial_window_location: Point<i32, Logical>,
 }
 
-impl<BackendData> PointerGrab<AnvilState<BackendData>> for MoveSurfaceGrab<BackendData> {
+impl<BackendData> PointerGrab<StarlandState<BackendData>> for MoveSurfaceGrab<BackendData> {
     fn motion(
         &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
+        data: &mut StarlandState<BackendData>,
+        handle: &mut PointerInnerHandle<'_, StarlandState<BackendData>>,
         _focus: Option<(FocusTarget, Point<i32, Logical>)>,
         event: &MotionEvent,
     ) {
@@ -73,8 +73,8 @@ impl<BackendData> PointerGrab<AnvilState<BackendData>> for MoveSurfaceGrab<Backe
 
     fn button(
         &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
+        data: &mut StarlandState<BackendData>,
+        handle: &mut PointerInnerHandle<'_, StarlandState<BackendData>>,
         event: &ButtonEvent,
     ) {
         handle.button(data, event);
@@ -86,14 +86,14 @@ impl<BackendData> PointerGrab<AnvilState<BackendData>> for MoveSurfaceGrab<Backe
 
     fn axis(
         &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
+        data: &mut StarlandState<BackendData>,
+        handle: &mut PointerInnerHandle<'_, StarlandState<BackendData>>,
         details: AxisFrame,
     ) {
         handle.axis(data, details)
     }
 
-    fn start_data(&self) -> &PointerGrabStartData<AnvilState<BackendData>> {
+    fn start_data(&self) -> &PointerGrabStartData<StarlandState<BackendData>> {
         &self.start_data
     }
 }
@@ -129,7 +129,7 @@ impl From<ResizeEdge> for xdg_toplevel::ResizeEdge {
 }
 
 struct ResizeSurfaceGrab<B: 'static> {
-    start_data: PointerGrabStartData<AnvilState<B>>,
+    start_data: PointerGrabStartData<StarlandState<B>>,
     window: Window,
     edges: ResizeEdge,
     initial_window_location: Point<i32, Logical>,
@@ -137,11 +137,11 @@ struct ResizeSurfaceGrab<B: 'static> {
     last_window_size: Size<i32, Logical>,
 }
 
-impl<BackendData> PointerGrab<AnvilState<BackendData>> for ResizeSurfaceGrab<BackendData> {
+impl<BackendData> PointerGrab<StarlandState<BackendData>> for ResizeSurfaceGrab<BackendData> {
     fn motion(
         &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
+        data: &mut StarlandState<BackendData>,
+        handle: &mut PointerInnerHandle<'_, StarlandState<BackendData>>,
         _focus: Option<(FocusTarget, Point<i32, Logical>)>,
         event: &MotionEvent,
     ) {
@@ -218,8 +218,8 @@ impl<BackendData> PointerGrab<AnvilState<BackendData>> for ResizeSurfaceGrab<Bac
 
     fn button(
         &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
+        data: &mut StarlandState<BackendData>,
+        handle: &mut PointerInnerHandle<'_, StarlandState<BackendData>>,
         event: &ButtonEvent,
     ) {
         handle.button(data, event);
@@ -286,14 +286,14 @@ impl<BackendData> PointerGrab<AnvilState<BackendData>> for ResizeSurfaceGrab<Bac
 
     fn axis(
         &mut self,
-        data: &mut AnvilState<BackendData>,
-        handle: &mut PointerInnerHandle<'_, AnvilState<BackendData>>,
+        data: &mut StarlandState<BackendData>,
+        handle: &mut PointerInnerHandle<'_, StarlandState<BackendData>>,
         details: AxisFrame,
     ) {
         handle.axis(data, details)
     }
 
-    fn start_data(&self) -> &PointerGrabStartData<AnvilState<BackendData>> {
+    fn start_data(&self) -> &PointerGrabStartData<StarlandState<BackendData>> {
         &self.start_data
     }
 }
@@ -334,11 +334,11 @@ impl FullscreenSurface {
     }
 }
 
-impl<BackendData> BufferHandler for AnvilState<BackendData> {
+impl<BackendData> BufferHandler for StarlandState<BackendData> {
     fn buffer_destroyed(&mut self, _buffer: &WlBuffer) {}
 }
 
-impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
+impl<BackendData: Backend> CompositorHandler for StarlandState<BackendData> {
     fn compositor_state(&mut self) -> &mut CompositorState {
         &mut self.compositor_state
     }
@@ -366,7 +366,7 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
     }
 }
 
-impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
+impl<BackendData: Backend> XdgShellHandler for StarlandState<BackendData> {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
     }
@@ -411,7 +411,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     }
 
     fn move_request(&mut self, surface: ToplevelSurface, seat: wl_seat::WlSeat, serial: Serial) {
-        let seat: Seat<AnvilState<BackendData>> = Seat::from_resource(&seat).unwrap();
+        let seat: Seat<StarlandState<BackendData>> = Seat::from_resource(&seat).unwrap();
         // TODO: touch move.
         let pointer = seat.get_pointer().unwrap();
 
@@ -479,7 +479,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         serial: Serial,
         edges: xdg_toplevel::ResizeEdge,
     ) {
-        let seat: Seat<AnvilState<BackendData>> = Seat::from_resource(&seat).unwrap();
+        let seat: Seat<StarlandState<BackendData>> = Seat::from_resource(&seat).unwrap();
         // TODO: touch resize.
         let pointer = seat.get_pointer().unwrap();
 
@@ -672,7 +672,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     }
 
     fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
-        let seat: Seat<AnvilState<BackendData>> = Seat::from_resource(&seat).unwrap();
+        let seat: Seat<StarlandState<BackendData>> = Seat::from_resource(&seat).unwrap();
         let kind = PopupKind::Xdg(surface);
         if let Some(root) = find_popup_root_surface(&kind).ok().and_then(|root| {
             self.space
@@ -719,7 +719,7 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     }
 }
 
-impl<BackendData> WlrLayerShellHandler for AnvilState<BackendData> {
+impl<BackendData> WlrLayerShellHandler for StarlandState<BackendData> {
     fn shell_state(&mut self) -> &mut WlrLayerShellState {
         &mut self.layer_shell_state
     }
@@ -740,7 +740,7 @@ impl<BackendData> WlrLayerShellHandler for AnvilState<BackendData> {
     }
 }
 
-impl<BackendData> AnvilState<BackendData> {
+impl<BackendData> StarlandState<BackendData> {
     fn window_for_surface(&self, surface: &WlSurface) -> Option<Window> {
         self.space
             .elements()

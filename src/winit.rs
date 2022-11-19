@@ -29,19 +29,20 @@ use smithay::{
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::{
         calloop::EventLoop,
+        wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
         wayland_server::{protocol::wl_surface, Display},
     },
     utils::{IsAlive, Point, Scale, Transform},
     wayland::{compositor, input_method::InputMethodSeat},
 };
 
-use crate::state::{AnvilState, Backend, CalloopData};
+use crate::state::{post_repaint, take_presentation_feedback, StarlandState, Backend, CalloopData};
 use crate::{drawing::*, render::*};
 
 pub const OUTPUT_NAME: &str = "winit";
 
 pub struct WinitData {
-    backend: WinitGraphicsBackend,
+    backend: WinitGraphicsBackend<Gles2Renderer>,
     damage_tracked_renderer: DamageTrackedRenderer,
     #[cfg(feature = "egl")]
     dmabuf_state: Option<(DmabufState, DmabufGlobal)>,
@@ -51,7 +52,7 @@ pub struct WinitData {
 }
 
 #[cfg(feature = "egl")]
-impl DmabufHandler for AnvilState<WinitData> {
+impl DmabufHandler for StarlandState<WinitData> {
     fn dmabuf_state(&mut self) -> &mut DmabufState {
         &mut self.backend_data.dmabuf_state.as_mut().unwrap().0
     }
@@ -66,7 +67,7 @@ impl DmabufHandler for AnvilState<WinitData> {
     }
 }
 #[cfg(feature = "egl")]
-delegate_dmabuf!(AnvilState<WinitData>);
+delegate_dmabuf!(StarlandState<WinitData>);
 
 impl Backend for WinitData {
     fn seat_name(&self) -> String {
@@ -83,7 +84,7 @@ pub fn run_winit(log: Logger) {
     let mut display = Display::new().unwrap();
 
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
-    let (mut backend, mut winit) = match winit::init(log.clone()) {
+    let (mut backend, mut winit) = match winit::init::<Gles2Renderer, _>(log.clone()) {
         Ok(ret) => ret,
         Err(err) => {
             slog::crit!(log, "Failed to initialize Winit backend: {}", err);
@@ -106,7 +107,7 @@ pub fn run_winit(log: Logger) {
         },
         log.clone(),
     );
-    let _global = output.create_global::<AnvilState<WinitData>>(&display.handle());
+    let _global = output.create_global::<StarlandState<WinitData>>(&display.handle());
     output.change_current_state(Some(mode), Some(Transform::Flipped180), None, Some((0, 0).into()));
     output.set_preferred(mode);
 
@@ -133,7 +134,7 @@ pub fn run_winit(log: Logger) {
             info!(log, "EGL hardware-acceleration enabled");
             let dmabuf_formats = backend.renderer().dmabuf_formats().cloned().collect::<Vec<_>>();
             let mut state = DmabufState::new();
-            let global = state.create_global::<AnvilState<WinitData>, _>(
+            let global = state.create_global::<StarlandState<WinitData>, _>(
                 &display.handle(),
                 dmabuf_formats,
                 log.clone(),
@@ -155,7 +156,7 @@ pub fn run_winit(log: Logger) {
             fps: fps_ticker::Fps::default(),
         }
     };
-    let mut state = AnvilState::init(&mut display, event_loop.handle(), data, log.clone(), true);
+    let mut state = StarlandState::init(&mut display, event_loop.handle(), data, log.clone(), true);
     state.space.map_output(&output, (0, 0));
 
     #[cfg(feature = "xwayland")]
@@ -298,6 +299,7 @@ pub fn run_winit(log: Logger) {
 
             match render_res {
                 Ok((damage, states)) => {
+                    let has_rendered = damage.is_some();
                     if let Some(damage) = damage {
                         if let Err(err) = backend.submit(Some(&*damage)) {
                             warn!(log, "Failed to submit buffer: {}", err);
@@ -306,7 +308,22 @@ pub fn run_winit(log: Logger) {
                     backend.window().set_cursor_visible(cursor_visible);
 
                     // Send frame events so that client start drawing their next frame
-                    state.send_frames(&output, &states);
+                    let time = state.clock.now();
+                    post_repaint(&output, &states, &state.space, time);
+
+                    if has_rendered {
+                        let mut output_presentation_feedback =
+                            take_presentation_feedback(&output, &state.space, &states);
+                        output_presentation_feedback.presented(
+                            time,
+                            output
+                                .current_mode()
+                                .map(|mode| mode.refresh as u32)
+                                .unwrap_or_default(),
+                            0,
+                            wp_presentation_feedback::Kind::Vsync,
+                        )
+                    }
                 }
                 Err(SwapBuffersError::ContextLost(err)) => {
                     error!(log, "Critical Rendering Error: {}", err);
@@ -317,7 +334,7 @@ pub fn run_winit(log: Logger) {
         }
 
         let mut calloop_data = CalloopData { state, display };
-        let result = event_loop.dispatch(Some(Duration::from_millis(16)), &mut calloop_data);
+        let result = event_loop.dispatch(Some(Duration::from_millis(1)), &mut calloop_data);
         CalloopData { state, display } = calloop_data;
 
         if result.is_err() {

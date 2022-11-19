@@ -6,7 +6,7 @@ use std::{
 use crate::{
     drawing::*,
     render::*,
-    state::{AnvilState, Backend, CalloopData},
+    state::{post_repaint, take_presentation_feedback, StarlandState, Backend, CalloopData},
 };
 use slog::Logger;
 #[cfg(feature = "debug")]
@@ -31,6 +31,7 @@ use smithay::{
     reexports::{
         calloop::EventLoop,
         gbm,
+        wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
         wayland_server::{protocol::wl_surface, Display},
     },
     utils::{IsAlive, Point, Scale},
@@ -55,7 +56,7 @@ pub struct X11Data {
 }
 
 #[cfg(feature = "egl")]
-impl DmabufHandler for AnvilState<X11Data> {
+impl DmabufHandler for StarlandState<X11Data> {
     fn dmabuf_state(&mut self) -> &mut DmabufState {
         &mut self.backend_data.dmabuf_state.as_mut().unwrap().0
     }
@@ -69,7 +70,7 @@ impl DmabufHandler for AnvilState<X11Data> {
     }
 }
 #[cfg(feature = "egl")]
-delegate_dmabuf!(AnvilState<X11Data>);
+delegate_dmabuf!(StarlandState<X11Data>);
 
 impl Backend for X11Data {
     fn seat_name(&self) -> String {
@@ -101,7 +102,7 @@ pub fn run_x11(log: Logger) {
     let context = EGLContext::new(&egl, log.clone()).expect("Failed to create EGLContext");
 
     let window = WindowBuilder::new()
-        .title("Anvil")
+        .title("Starland")
         .build(&handle)
         .expect("Failed to create first window");
 
@@ -128,7 +129,7 @@ pub fn run_x11(log: Logger) {
         let dmabuf_formats = renderer.dmabuf_formats().cloned().collect::<Vec<_>>();
         let mut state = DmabufState::new();
         let global =
-            state.create_global::<AnvilState<X11Data>, _>(&display.handle(), dmabuf_formats, log.clone());
+            state.create_global::<StarlandState<X11Data>, _>(&display.handle(), dmabuf_formats, log.clone());
         Some((state, global))
     } else {
         None
@@ -170,7 +171,7 @@ pub fn run_x11(log: Logger) {
         },
         log.clone(),
     );
-    let _global = output.create_global::<AnvilState<X11Data>>(&display.handle());
+    let _global = output.create_global::<StarlandState<X11Data>>(&display.handle());
     output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
     output.set_preferred(mode);
 
@@ -188,7 +189,7 @@ pub fn run_x11(log: Logger) {
         fps: fps_ticker::Fps::default(),
     };
 
-    let mut state = AnvilState::init(&mut display, event_loop.handle(), data, log.clone(), true);
+    let mut state = StarlandState::init(&mut display, event_loop.handle(), data, log.clone(), true);
 
     state.space.map_output(&output, (0, 0));
 
@@ -333,7 +334,7 @@ pub fn run_x11(log: Logger) {
             );
 
             match render_res {
-                Ok((_, states)) => {
+                Ok((damage, states)) => {
                     trace!(log, "Finished rendering");
                     if let Err(err) = backend_data.surface.submit() {
                         backend_data.surface.reset_buffers();
@@ -343,7 +344,22 @@ pub fn run_x11(log: Logger) {
                     };
 
                     // Send frame events so that client start drawing their next frame
-                    state.send_frames(&output, &states);
+                    let time = state.clock.now();
+                    post_repaint(&output, &states, &state.space, time);
+
+                    if damage.is_some() {
+                        let mut output_presentation_feedback =
+                            take_presentation_feedback(&output, &state.space, &states);
+                        output_presentation_feedback.presented(
+                            time,
+                            output
+                                .current_mode()
+                                .map(|mode| mode.refresh as u32)
+                                .unwrap_or_default(),
+                            0,
+                            wp_presentation_feedback::Kind::Vsync,
+                        )
+                    }
                 }
                 Err(err) => {
                     backend_data.surface.reset_buffers();
