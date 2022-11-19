@@ -23,37 +23,81 @@
 			url = "github:nmattia/naersk";
 			inputs.nixpkgs.follows = "nixpkgs";
 		};
-
-		smithay = {
-			url = "path:./smithay";
-		};
 	};
 
-	outputs = { self, nixpkgs, utils, rust-overlay, crate2nix, naersk, smithay, ... }:
+	outputs = { self, nixpkgs, utils, rust-overlay, crate2nix, naersk, ... }:
+	utils.lib.eachDefaultSystem(system:
 	let
 		cargoToml = (builtins.fromTOML (builtins.readFile ./Cargo.toml));
 		name = "${cargoToml.package.name}";
 		version = "${cargoToml.package.version}";
-	in
-	utils.lib.eachDefaultSystem(system:
-		let
-			pkgs = import nixpkgs {
-				inherit system;
-				overlays = [
-					rust-overlay.overlay
-					(self: super: {
-						# Because rust-overlay bundles multiple rust packages into one
-						# derivation, specify that mega-bundle here, so that crate2nix
-						# will use them automatically.
-						rustc = self.rust-bin.stable.latest.default;
-						cargo = self.rust-bin.stable.latest.default;
-					})
-				];
-			};
-			inherit (import "${crate2nix}/tools.nix" { inherit pkgs; })
-			generatedCargoNix;
 
-			# Create the cargo2nix project
+		# environment variables
+		# RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
+		# PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
+
+		buildEnvVars = {
+			# inherit PKG_CONFIG_PATH RUST_SRC_PATH;
+		};
+
+		pkgs = import nixpkgs {
+			inherit system;
+			overlays = [
+				rust-overlay.overlay
+				(self: super: {
+					# Because rust-overlay bundles multiple rust packages into one
+					# derivation, specify that mega-bundle here, so that crate2nix
+					# will use them automatically.
+					rustc = self.rust-bin.stable.latest.default;
+					cargo = self.rust-bin.stable.latest.default;
+				})
+			];
+		};
+
+	in let
+
+			deps = with pkgs; [
+				# nativeBuildInputs
+				openssl.dev pkgconfig pkg-config
+
+				# buildInputs
+				rustc cargo pkgconfig nixpkgs-fmt pkg-config
+
+				wayland
+				wayland-protocols
+				egl-wayland glew-egl gegl libglvnd freeglut
+				wayland-scanner
+				wayland-utils
+				xwayland
+				waylandpp
+
+				udev
+				dbus
+				libxkbcommon
+				libinput
+				xorg.libX11
+				systemd
+				mesa # required for the 'gbm' crate
+				elogind
+				eudev
+				libdrm
+				libudev-zero libudev0-shim
+				systemdMinimal
+				gcc
+				glibc
+			];
+
+			lib = pkgs.lib;
+
+			rpath = lib.makeLibraryPath deps;
+			
+			nativeBuildInputs = with pkgs; [] ++ deps;
+
+			buildInputs = with pkgs; [] ++ deps;
+
+			inherit (import "${crate2nix}/tools.nix" { inherit pkgs; }) generatedCargoNix;
+
+			# Create the crate2nix project
 			project = pkgs.callPackage(generatedCargoNix {
 				inherit name;
 				src = ./.;
@@ -61,19 +105,14 @@
 
 			{
 				defaultCrateOverrides = pkgs.defaultCrateOverrides // {
-				# The app crate itself is overriden here. Typically we
-				# configure non-Rust dependencies (see below) here.
-				${name} = oldAttrs: {
-					inherit buildInputs nativeBuildInputs;
-				} // buildEnvVars;
-				};
-			};
+					${name} = oldAttrs: {
+						inherit buildInputs nativeBuildInputs;
+					} // buildEnvVars;
 
-			# Configuration for the non-Rust dependencies
-			buildInputs = with pkgs; [ openssl.dev ];
-			nativeBuildInputs = with pkgs; [ rustc cargo pkgconfig nixpkgs-fmt ];
-			buildEnvVars = {
-				PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
+					postFixup = ''
+						patchelf --set-rpath ${rpath} $out/bin/anvil
+					'';
+				};
 			};
 
 		in rec {
@@ -87,12 +126,12 @@
 				inherit name;
 				drv = packages.${name};
 			};
+
 			defaultApp = apps.${name};
 
 			# `nix develop`
 			devShell = pkgs.mkShell {
-				inherit buildInputs nativeBuildInputs;
-				RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
+				inherit buildInputs nativeBuildInputs rpath;
 			} // buildEnvVars;
 		}
 	);
