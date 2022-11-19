@@ -1,2 +1,4 @@
+# Rust output
 target*
+# Nix output
 result*
