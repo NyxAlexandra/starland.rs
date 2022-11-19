@@ -1,7 +1,7 @@
-# Main
+## Main
 
 - `starland`:
-    - [ ] Rename "anvil" to "starland"
+    - [x] Rename "anvil" to "starland"
     - [ ] Listen for messages
     - [ ] `clap`
     - [ ] Provide lots of information about window states
@@ -10,10 +10,7 @@
 - `starctl`:
     - [ ] Send messages
     - [ ] `clap`
-
-## Build
-
-- [ ] Get it to build and run on NixOS
+- [ ] Build and run on NixOS
     - [x] `nix develop`:
         - [x] Build
             - [x] Build dependencies
