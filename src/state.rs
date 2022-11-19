@@ -1,14 +1,19 @@
 use std::{
     os::unix::prelude::AsRawFd,
     sync::{atomic::AtomicBool, Arc, Mutex},
+    time::Duration,
 };
 
 use smithay::{
+    backend::renderer::element::{default_primary_scanout_output_compare, RenderElementStates},
     delegate_compositor, delegate_data_device, delegate_input_method_manager,
     delegate_keyboard_shortcuts_inhibit, delegate_layer_shell, delegate_output, delegate_primary_selection,
     delegate_seat, delegate_shm, delegate_tablet_manager, delegate_text_input_manager, delegate_viewporter,
-    delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
-    desktop::{PopupManager, Space, WindowSurfaceType},
+    delegate_virtual_keyboard_manager, delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
+    desktop::{
+        utils::{surface_primary_scanout_output, update_surface_primary_scanout_output},
+        PopupManager, Space, Window,
+    },
     input::{keyboard::XkbConfig, pointer::CursorImageStatus, Seat, SeatHandler, SeatState},
     output::Output,
     reexports::{
@@ -36,6 +41,7 @@ use smithay::{
         },
         output::OutputManagerState,
         primary_selection::{set_primary_focus, PrimarySelectionHandler, PrimarySelectionState},
+        seat::WaylandFocus,
         shell::{
             wlr_layer::WlrLayerShellState,
             xdg::{
@@ -48,12 +54,14 @@ use smithay::{
         tablet_manager::TabletSeatTrait,
         text_input::TextInputManagerState,
         viewporter::ViewporterState,
+        virtual_keyboard::VirtualKeyboardManagerState,
         xdg_activation::{
             XdgActivationHandler, XdgActivationState, XdgActivationToken, XdgActivationTokenData,
         },
     },
 };
 
+use crate::focus::FocusTarget;
 #[cfg(feature = "xwayland")]
 use crate::xwayland::X11State;
 #[cfg(feature = "xwayland")]
@@ -82,7 +90,7 @@ pub struct AnvilState<BackendData: 'static> {
     pub handle: LoopHandle<'static, CalloopData<BackendData>>,
 
     // desktop
-    pub space: Space,
+    pub space: Space<Window>,
     pub popups: PopupManager,
 
     // smithay state
@@ -158,17 +166,19 @@ impl<BackendData> ShmHandler for AnvilState<BackendData> {
 delegate_shm!(@<BackendData: 'static> AnvilState<BackendData>);
 
 impl<BackendData> SeatHandler for AnvilState<BackendData> {
-    type KeyboardFocus = WlSurface;
-    type PointerFocus = WlSurface;
+    type KeyboardFocus = FocusTarget;
+    type PointerFocus = FocusTarget;
 
     fn seat_state(&mut self) -> &mut SeatState<AnvilState<BackendData>> {
         &mut self.seat_state
     }
 
-    fn focus_changed(&mut self, seat: &Seat<Self>, surface: Option<&WlSurface>) {
+    fn focus_changed(&mut self, seat: &Seat<Self>, target: Option<&FocusTarget>) {
         let dh = &self.display_handle;
 
-        let focus = surface.and_then(|s| dh.get_client(s.id()).ok());
+        let focus = target
+            .and_then(WaylandFocus::wl_surface)
+            .and_then(|s| dh.get_client(s.id()).ok());
         set_data_device_focus(dh, seat, focus.clone());
         set_primary_focus(dh, seat, focus);
     }
@@ -197,6 +207,8 @@ impl<BackendData> KeyboardShortcutsInhibitHandler for AnvilState<BackendData> {
 
 delegate_keyboard_shortcuts_inhibit!(@<BackendData: 'static> AnvilState<BackendData>);
 
+delegate_virtual_keyboard_manager!(@<BackendData: 'static> AnvilState<BackendData>);
+
 delegate_viewporter!(@<BackendData: 'static> AnvilState<BackendData>);
 
 impl<BackendData> XdgActivationHandler for AnvilState<BackendData> {
@@ -214,10 +226,11 @@ impl<BackendData> XdgActivationHandler for AnvilState<BackendData> {
             // Just grant the wish
             let w = self
                 .space
-                .window_for_surface(&surface, WindowSurfaceType::TOPLEVEL)
+                .elements()
+                .find(|window| window.toplevel().wl_surface() == &surface)
                 .cloned();
             if let Some(window) = w {
-                self.space.raise_window(&window, true);
+                self.space.raise_element(&window, true);
             }
         } else {
             // Discard the request
@@ -310,6 +323,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let xdg_shell_state = XdgShellState::new::<Self, _>(&dh, log.clone());
         TextInputManagerState::new::<Self>(&dh);
         InputMethodManagerState::new::<Self>(&dh);
+        VirtualKeyboardManagerState::new::<Self, _>(&dh, |_client| true);
 
         // init input
         let seat_name = backend_data.seat_name();
@@ -380,6 +394,41 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             xwayland,
             #[cfg(feature = "xwayland")]
             x11_state: None,
+        }
+    }
+
+    pub fn send_frames(&self, output: &Output, render_element_states: &RenderElementStates) {
+        let time = self.start_time.elapsed();
+        let throttle = Some(Duration::from_secs(1));
+
+        self.space.elements().for_each(|window| {
+            window.with_surfaces(|surface, states| {
+                update_surface_primary_scanout_output(
+                    surface,
+                    output,
+                    states,
+                    render_element_states,
+                    default_primary_scanout_output_compare,
+                )
+            });
+
+            if self.space.outputs_for_element(window).contains(output) {
+                window.send_frame(output, time, throttle, surface_primary_scanout_output);
+            }
+        });
+        let map = smithay::desktop::layer_map_for_output(output);
+        for layer_surface in map.layers() {
+            layer_surface.with_surfaces(|surface, states| {
+                update_surface_primary_scanout_output(
+                    surface,
+                    output,
+                    states,
+                    render_element_states,
+                    default_primary_scanout_output_compare,
+                )
+            });
+
+            layer_surface.send_frame(output, time, throttle, surface_primary_scanout_output);
         }
     }
 }
