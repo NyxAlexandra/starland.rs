@@ -12,7 +12,10 @@ static POSSIBLE_BACKENDS: &[&str] = &[
 fn main() {
     // A logger facility, here we use the terminal here
     let log = if std::env::var("STARLAND_MUTEX_LOG").is_ok() {
-        slog::Logger::root(std::sync::Mutex::new(slog_term::term_full().fuse()).fuse(), o!())
+        slog::Logger::root(
+            std::sync::Mutex::new(slog_term::term_full().fuse()).fuse(),
+            o!(),
+        )
     } else {
         slog::Logger::root(
             slog_async::Async::default(slog_term::term_full().fuse()).fuse(),

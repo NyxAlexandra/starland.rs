@@ -36,7 +36,7 @@ use smithay::{
     wayland::{compositor, input_method::InputMethodSeat},
 };
 
-use crate::state::{post_repaint, take_presentation_feedback, StarlandState, Backend, CalloopData};
+use crate::state::{post_repaint, take_presentation_feedback, Backend, CalloopData, StarlandState};
 use crate::{drawing::*, render::*};
 
 pub const OUTPUT_NAME: &str = "winit";
@@ -57,7 +57,11 @@ impl DmabufHandler for StarlandState<WinitData> {
         &mut self.backend_data.dmabuf_state.as_mut().unwrap().0
     }
 
-    fn dmabuf_imported(&mut self, _global: &DmabufGlobal, dmabuf: Dmabuf) -> Result<(), ImportError> {
+    fn dmabuf_imported(
+        &mut self,
+        _global: &DmabufGlobal,
+        dmabuf: Dmabuf,
+    ) -> Result<(), ImportError> {
         self.backend_data
             .backend
             .renderer()
@@ -108,14 +112,21 @@ pub fn run_winit(log: Logger) {
         log.clone(),
     );
     let _global = output.create_global::<StarlandState<WinitData>>(&display.handle());
-    output.change_current_state(Some(mode), Some(Transform::Flipped180), None, Some((0, 0).into()));
+    output.change_current_state(
+        Some(mode),
+        Some(Transform::Flipped180),
+        None,
+        Some((0, 0).into()),
+    );
     output.set_preferred(mode);
 
     #[cfg(feature = "debug")]
-    let fps_image =
-        image::io::Reader::with_format(std::io::Cursor::new(FPS_NUMBERS_PNG), image::ImageFormat::Png)
-            .decode()
-            .unwrap();
+    let fps_image = image::io::Reader::with_format(
+        std::io::Cursor::new(FPS_NUMBERS_PNG),
+        image::ImageFormat::Png,
+    )
+    .decode()
+    .unwrap();
     #[cfg(feature = "debug")]
     let fps_texture = backend
         .renderer()
@@ -130,9 +141,17 @@ pub fn run_winit(log: Logger) {
 
     let data = {
         #[cfg(feature = "egl")]
-        let dmabuf_state = if backend.renderer().bind_wl_display(&display.handle()).is_ok() {
+        let dmabuf_state = if backend
+            .renderer()
+            .bind_wl_display(&display.handle())
+            .is_ok()
+        {
             info!(log, "EGL hardware-acceleration enabled");
-            let dmabuf_formats = backend.renderer().dmabuf_formats().cloned().collect::<Vec<_>>();
+            let dmabuf_formats = backend
+                .renderer()
+                .dmabuf_formats()
+                .cloned()
+                .collect::<Vec<_>>();
             let mut state = DmabufState::new();
             let global = state.create_global::<StarlandState<WinitData>, _>(
                 &display.handle(),

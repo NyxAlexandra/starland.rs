@@ -15,7 +15,7 @@ use slog::Logger;
 use crate::{
     drawing::*,
     render::*,
-    state::{post_repaint, take_presentation_feedback, StarlandState, Backend, CalloopData},
+    state::{post_repaint, take_presentation_feedback, Backend, CalloopData, StarlandState},
 };
 #[cfg(feature = "debug")]
 use smithay::backend::renderer::ImportMem;
@@ -30,7 +30,9 @@ use smithay::{
 };
 use smithay::{
     backend::{
-        drm::{DrmDevice, DrmError, DrmEvent, DrmEventMetadata, DrmNode, GbmBufferedSurface, NodeType},
+        drm::{
+            DrmDevice, DrmError, DrmEvent, DrmEventMetadata, DrmNode, GbmBufferedSurface, NodeType,
+        },
         egl::{EGLContext, EGLDevice, EGLDisplay},
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
@@ -81,8 +83,13 @@ use smithay::{
     },
 };
 
-type UdevRenderer<'a> =
-    MultiRenderer<'a, 'a, EglGlesBackend<Gles2Renderer>, EglGlesBackend<Gles2Renderer>, Gles2Renderbuffer>;
+type UdevRenderer<'a> = MultiRenderer<
+    'a,
+    'a,
+    EglGlesBackend<Gles2Renderer>,
+    EglGlesBackend<Gles2Renderer>,
+    Gles2Renderbuffer,
+>;
 
 #[derive(Copy, Clone)]
 pub struct SessionFd(RawFd);
@@ -121,10 +128,17 @@ impl DmabufHandler for StarlandState<UdevData> {
         &mut self.backend_data.dmabuf_state.as_mut().unwrap().0
     }
 
-    fn dmabuf_imported(&mut self, _global: &DmabufGlobal, dmabuf: Dmabuf) -> Result<(), ImportError> {
+    fn dmabuf_imported(
+        &mut self,
+        _global: &DmabufGlobal,
+        dmabuf: Dmabuf,
+    ) -> Result<(), ImportError> {
         self.backend_data
             .gpus
-            .renderer::<Gles2Renderbuffer>(&self.backend_data.primary_gpu, &self.backend_data.primary_gpu)
+            .renderer::<Gles2Renderbuffer>(
+                &self.backend_data.primary_gpu,
+                &self.backend_data.primary_gpu,
+            )
             .and_then(|mut renderer| renderer.import_dmabuf(&dmabuf, None))
             .map(|_| ())
             .map_err(|_| ImportError::Failed)
@@ -183,7 +197,12 @@ pub fn run_udev(log: Logger) {
     } else {
         primary_gpu(&session.seat())
             .unwrap()
-            .and_then(|x| DrmNode::from_path(x).ok()?.node_with_type(NodeType::Render)?.ok())
+            .and_then(|x| {
+                DrmNode::from_path(x)
+                    .ok()?
+                    .node_with_type(NodeType::Render)?
+                    .ok()
+            })
             .unwrap_or_else(|| {
                 all_gpus(&session.seat())
                     .unwrap()
@@ -203,10 +222,12 @@ pub fn run_udev(log: Logger) {
         .unwrap();
 
     #[cfg(feature = "debug")]
-    let fps_image =
-        image::io::Reader::with_format(std::io::Cursor::new(FPS_NUMBERS_PNG), image::ImageFormat::Png)
-            .decode()
-            .unwrap();
+    let fps_image = image::io::Reader::with_format(
+        std::io::Cursor::new(FPS_NUMBERS_PNG),
+        image::ImageFormat::Png,
+    )
+    .decode()
+    .unwrap();
     #[cfg(feature = "debug")]
     let fps_texture = renderer
         .import_memory(
@@ -307,7 +328,9 @@ pub fn run_udev(log: Logger) {
             UdevEvent::Added { device_id, path } => {
                 data.state.device_added(&mut data.display, device_id, path)
             }
-            UdevEvent::Changed { device_id } => data.state.device_changed(&mut data.display, device_id),
+            UdevEvent::Changed { device_id } => {
+                data.state.device_changed(&mut data.display, device_id)
+            }
             UdevEvent::Removed { device_id } => data.state.device_removed(device_id),
         })
         .unwrap();
@@ -337,8 +360,11 @@ pub fn run_udev(log: Logger) {
     }
 }
 
-pub type RenderSurface =
-    GbmBufferedSurface<Rc<RefCell<GbmDevice<SessionFd>>>, SessionFd, Option<OutputPresentationFeedback>>;
+pub type RenderSurface = GbmBufferedSurface<
+    Rc<RefCell<GbmDevice<SessionFd>>>,
+    SessionFd,
+    Option<OutputPresentationFeedback>,
+>;
 
 struct SurfaceData {
     dh: DisplayHandle,
@@ -444,14 +470,18 @@ fn scan_connectors(
             };
             surface.link(signaler.clone());
 
-            let gbm_surface =
-                match GbmBufferedSurface::new(surface, gbm.clone(), formats.clone(), logger.clone()) {
-                    Ok(renderer) => renderer,
-                    Err(err) => {
-                        warn!(logger, "Failed to create rendering surface: {}", err);
-                        continue;
-                    }
-                };
+            let gbm_surface = match GbmBufferedSurface::new(
+                surface,
+                gbm.clone(),
+                formats.clone(),
+                logger.clone(),
+            ) {
+                Ok(renderer) => renderer,
+                Err(err) => {
+                    warn!(logger, "Failed to create rendering surface: {}", err);
+                    continue;
+                }
+            };
 
             let size = mode.size();
             let mode = Mode {
@@ -529,9 +559,12 @@ impl StarlandState<UdevData> {
         // Try to open the device
         let open_flags = OFlag::O_RDWR | OFlag::O_CLOEXEC | OFlag::O_NOCTTY | OFlag::O_NONBLOCK;
         let device_fd = self.backend_data.session.open(&path, open_flags).ok();
-        let devices = device_fd
-            .map(SessionFd)
-            .map(|fd| (DrmDevice::new(fd, true, self.log.clone()), GbmDevice::new(fd)));
+        let devices = device_fd.map(SessionFd).map(|fd| {
+            (
+                DrmDevice::new(fd, true, self.log.clone()),
+                GbmDevice::new(fd),
+            )
+        });
 
         // Report device open failures.
         let (mut device, gbm) = match devices {
@@ -558,7 +591,10 @@ impl StarlandState<UdevData> {
         let node = match DrmNode::from_dev_id(device_id) {
             Ok(node) => node,
             Err(err) => {
-                warn!(self.log, "Failed to access drm node for {}: {}", device_id, err);
+                warn!(
+                    self.log,
+                    "Failed to access drm node for {}: {}", device_id, err
+                );
                 return;
             }
         };
@@ -575,27 +611,32 @@ impl StarlandState<UdevData> {
         )));
 
         let handle = self.handle.clone();
-        let restart_token = self.backend_data.signaler.register(move |signal| match signal {
-            SessionSignal::ActivateSession | SessionSignal::ActivateDevice { .. } => {
-                handle.insert_idle(move |data| data.state.render(node, None));
-            }
-            _ => {}
-        });
+        let restart_token = self
+            .backend_data
+            .signaler
+            .register(move |signal| match signal {
+                SessionSignal::ActivateSession | SessionSignal::ActivateDevice { .. } => {
+                    handle.insert_idle(move |data| data.state.render(node, None));
+                }
+                _ => {}
+            });
 
         device.link(self.backend_data.signaler.clone());
-        let event_dispatcher =
-            Dispatcher::new(
-                device,
-                move |event, metadata, data: &mut CalloopData<_>| match event {
-                    DrmEvent::VBlank(crtc) => {
-                        data.state.frame_finish(node, crtc, metadata);
-                    }
-                    DrmEvent::Error(error) => {
-                        error!(data.state.log, "{:?}", error);
-                    }
-                },
-            );
-        let registration_token = self.handle.register_dispatcher(event_dispatcher.clone()).unwrap();
+        let event_dispatcher = Dispatcher::new(
+            device,
+            move |event, metadata, data: &mut CalloopData<_>| match event {
+                DrmEvent::VBlank(crtc) => {
+                    data.state.frame_finish(node, crtc, metadata);
+                }
+                DrmEvent::Error(error) => {
+                    error!(data.state.log, "{:?}", error);
+                }
+            },
+        );
+        let registration_token = self
+            .handle
+            .register_dispatcher(event_dispatcher.clone())
+            .unwrap();
 
         for backend in backends.borrow_mut().values() {
             // render first frame
@@ -669,7 +710,12 @@ impl StarlandState<UdevData> {
             for surface in backends.values() {
                 let logger = logger.clone();
                 // render first frame
-                schedule_initial_render(&mut self.backend_data.gpus, surface.clone(), &loop_handle, logger);
+                schedule_initial_render(
+                    &mut self.backend_data.gpus,
+                    surface.clone(),
+                    &loop_handle,
+                    logger,
+                );
             }
         }
     }
@@ -709,7 +755,12 @@ impl StarlandState<UdevData> {
         }
     }
 
-    fn frame_finish(&mut self, dev_id: DrmNode, crtc: crtc::Handle, metadata: &mut Option<DrmEventMetadata>) {
+    fn frame_finish(
+        &mut self,
+        dev_id: DrmNode,
+        crtc: crtc::Handle,
+        metadata: &mut Option<DrmEventMetadata>,
+    ) {
         let device_backend = match self.backend_data.backends.get_mut(&dev_id) {
             Some(backend) => backend,
             None => {
@@ -725,7 +776,10 @@ impl StarlandState<UdevData> {
         let surface = match surfaces.get(&crtc) {
             Some(surface) => surface,
             None => {
-                error!(self.log, "Trying to finish frame on non-existent crtc {:?}", crtc);
+                error!(
+                    self.log,
+                    "Trying to finish frame on non-existent crtc {:?}", crtc
+                );
                 return;
             }
         };
@@ -756,7 +810,10 @@ impl StarlandState<UdevData> {
                         smithay::backend::drm::DrmEventTime::Monotonic(tp) => Some(tp),
                         smithay::backend::drm::DrmEventTime::Realtime(_) => None,
                     });
-                    let seq = metadata.as_ref().map(|metadata| metadata.sequence).unwrap_or(0);
+                    let seq = metadata
+                        .as_ref()
+                        .map(|metadata| metadata.sequence)
+                        .unwrap_or(0);
 
                     let (clock, flags) = if let Some(tp) = tp {
                         (
@@ -839,7 +896,11 @@ impl StarlandState<UdevData> {
                 // However, if we need to do a copy, that might not be enough.
                 // (And without actual comparision to previous frames we cannot really know.)
                 // So lets ignore that in those cases to avoid thrashing performance.
-                trace!(self.log, "scheduling repaint timer immediately on {:?}", crtc);
+                trace!(
+                    self.log,
+                    "scheduling repaint timer immediately on {:?}",
+                    crtc
+                );
                 Timer::immediate()
             } else {
                 trace!(
@@ -865,7 +926,10 @@ impl StarlandState<UdevData> {
         let device_backend = match self.backend_data.backends.get_mut(&dev_id) {
             Some(backend) => backend,
             None => {
-                error!(self.log, "Trying to render on non-existent backend {}", dev_id);
+                error!(
+                    self.log,
+                    "Trying to render on non-existent backend {}", dev_id
+                );
                 return;
             }
         };
@@ -963,7 +1027,9 @@ impl StarlandState<UdevData> {
                                     ..
                                 })
                         ),
-                        SwapBuffersError::ContextLost(err) => panic!("Rendering loop lost: {}", err),
+                        SwapBuffersError::ContextLost(err) => {
+                            panic!("Rendering loop lost: {}", err)
+                        }
                     }
                 }
             };
@@ -1084,7 +1150,9 @@ fn render_surface<'a>(
 
     #[cfg(feature = "debug")]
     {
-        surface.fps_element.update_fps(surface.fps.avg().round() as u32);
+        surface
+            .fps_element
+            .update_fps(surface.fps.avg().round() as u32);
         surface.fps.tick();
         elements.push(CustomRenderElements::Fps(surface.fps_element.clone()));
     }
@@ -1138,7 +1206,12 @@ fn schedule_initial_render(
                 warn!(logger, "Failed to submit page_flip: {}", err);
                 let handle = evt_handle.clone();
                 evt_handle.insert_idle(move |data| {
-                    schedule_initial_render(&mut data.state.backend_data.gpus, surface, &handle, logger)
+                    schedule_initial_render(
+                        &mut data.state.backend_data.gpus,
+                        surface,
+                        &handle,
+                        logger,
+                    )
                 });
             }
             SwapBuffersError::ContextLost(err) => panic!("Rendering loop lost: {}", err),

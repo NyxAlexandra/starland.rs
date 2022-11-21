@@ -7,10 +7,11 @@ use std::{
 use smithay::{
     backend::renderer::element::{default_primary_scanout_output_compare, RenderElementStates},
     delegate_compositor, delegate_data_device, delegate_input_method_manager,
-    delegate_keyboard_shortcuts_inhibit, delegate_layer_shell, delegate_output, delegate_presentation,
-    delegate_primary_selection, delegate_seat, delegate_shm, delegate_tablet_manager,
-    delegate_text_input_manager, delegate_viewporter, delegate_virtual_keyboard_manager,
-    delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_keyboard_shortcuts_inhibit, delegate_layer_shell, delegate_output,
+    delegate_presentation, delegate_primary_selection, delegate_seat, delegate_shm,
+    delegate_tablet_manager, delegate_text_input_manager, delegate_viewporter,
+    delegate_virtual_keyboard_manager, delegate_xdg_activation, delegate_xdg_decoration,
+    delegate_xdg_shell,
     desktop::{
         utils::{
             surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
@@ -23,7 +24,8 @@ use smithay::{
     reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_protocols::xdg::decoration::{
-            self as xdg_decoration, zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
+            self as xdg_decoration,
+            zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
         },
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
@@ -40,7 +42,8 @@ use smithay::{
         },
         input_method::{InputMethodManagerState, InputMethodSeat},
         keyboard_shortcuts_inhibit::{
-            KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor,
+            KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState,
+            KeyboardShortcutsInhibitor,
         },
         output::OutputManagerState,
         presentation::PresentationState,
@@ -65,9 +68,9 @@ use smithay::{
     },
 };
 
-use crate::focus::FocusTarget;
 #[cfg(feature = "xwayland")]
 use crate::xwayland::X11State;
+use crate::{config::Config, focus::FocusTarget};
 #[cfg(feature = "xwayland")]
 use smithay::xwayland::{XWayland, XWaylandEvent};
 
@@ -127,6 +130,9 @@ pub struct StarlandState<BackendData: 'static> {
     pub xwayland: XWayland,
     #[cfg(feature = "xwayland")]
     pub x11_state: Option<X11State>,
+
+    /// Configuration struct.
+    pub conf: Config,
 }
 
 delegate_compositor!(@<BackendData: Backend + 'static> StarlandState<BackendData>);
@@ -140,7 +146,12 @@ impl<BackendData> DataDeviceHandler for StarlandState<BackendData> {
     }
 }
 impl<BackendData> ClientDndGrabHandler for StarlandState<BackendData> {
-    fn started(&mut self, _source: Option<WlDataSource>, icon: Option<WlSurface>, _seat: Seat<Self>) {
+    fn started(
+        &mut self,
+        _source: Option<WlDataSource>,
+        icon: Option<WlSurface>,
+        _seat: Seat<Self>,
+    ) {
         self.dnd_icon = icon;
     }
     fn dropped(&mut self, _seat: Seat<Self>) {
@@ -344,14 +355,16 @@ impl<BackendData: Backend + 'static> StarlandState<BackendData> {
             .expect("Failed to initialize the keyboard");
 
         let cursor_status2 = cursor_status.clone();
-        seat.tablet_seat().on_cursor_surface(move |_tool, new_status| {
-            // TODO: tablet tools should have their own cursors
-            *cursor_status2.lock().unwrap() = new_status;
-        });
+        seat.tablet_seat()
+            .on_cursor_surface(move |_tool, new_status| {
+                // TODO: tablet tools should have their own cursors
+                *cursor_status2.lock().unwrap() = new_status;
+            });
 
         seat.add_input_method(XkbConfig::default(), 200, 25);
 
-        let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&display.handle());
+        let keyboard_shortcuts_inhibit_state =
+            KeyboardShortcutsInhibitState::new::<Self>(&display.handle());
 
         #[cfg(feature = "xwayland")]
         let xwayland = {
@@ -404,6 +417,7 @@ impl<BackendData: Backend + 'static> StarlandState<BackendData> {
             xwayland,
             #[cfg(feature = "xwayland")]
             x11_state: None,
+            conf: Config::get(),
         }
     }
 }
@@ -460,7 +474,9 @@ pub fn take_presentation_feedback(
             window.take_presentation_feedback(
                 &mut output_presentation_feedback,
                 surface_primary_scanout_output,
-                |surface, _| surface_presentation_feedback_flags_from_states(surface, render_element_states),
+                |surface, _| {
+                    surface_presentation_feedback_flags_from_states(surface, render_element_states)
+                },
             );
         }
     });
@@ -469,7 +485,9 @@ pub fn take_presentation_feedback(
         layer_surface.take_presentation_feedback(
             &mut output_presentation_feedback,
             surface_primary_scanout_output,
-            |surface, _| surface_presentation_feedback_flags_from_states(surface, render_element_states),
+            |surface, _| {
+                surface_presentation_feedback_flags_from_states(surface, render_element_states)
+            },
         );
     }
 

@@ -6,7 +6,7 @@ use std::{
 use crate::{
     drawing::*,
     render::*,
-    state::{post_repaint, take_presentation_feedback, StarlandState, Backend, CalloopData},
+    state::{post_repaint, take_presentation_feedback, Backend, CalloopData, StarlandState},
 };
 use slog::Logger;
 #[cfg(feature = "debug")]
@@ -23,7 +23,9 @@ use smithay::{
 use smithay::{
     backend::{
         egl::{EGLContext, EGLDisplay},
-        renderer::{damage::DamageTrackedRenderer, element::AsRenderElements, gles2::Gles2Renderer, Bind},
+        renderer::{
+            damage::DamageTrackedRenderer, element::AsRenderElements, gles2::Gles2Renderer, Bind,
+        },
         x11::{WindowBuilder, X11Backend, X11Event, X11Surface},
     },
     input::pointer::{CursorImageAttributes, CursorImageStatus},
@@ -61,7 +63,11 @@ impl DmabufHandler for StarlandState<X11Data> {
         &mut self.backend_data.dmabuf_state.as_mut().unwrap().0
     }
 
-    fn dmabuf_imported(&mut self, _global: &DmabufGlobal, dmabuf: Dmabuf) -> Result<(), ImportError> {
+    fn dmabuf_imported(
+        &mut self,
+        _global: &DmabufGlobal,
+        dmabuf: Dmabuf,
+    ) -> Result<(), ImportError> {
         self.backend_data
             .renderer
             .import_dmabuf(&dmabuf, None)
@@ -97,7 +103,8 @@ pub fn run_x11(log: Logger) {
     // Create the gbm device for buffer allocation.
     let device = gbm::Device::new(fd).expect("Failed to create gbm device");
     // Initialize EGL using the GBM device.
-    let egl = unsafe { EGLDisplay::new(&device, log.clone()).expect("Failed to create EGLDisplay") };
+    let egl =
+        unsafe { EGLDisplay::new(&device, log.clone()).expect("Failed to create EGLDisplay") };
     // Create the OpenGL context
     let context = EGLContext::new(&egl, log.clone()).expect("Failed to create EGLContext");
 
@@ -128,8 +135,11 @@ pub fn run_x11(log: Logger) {
         info!(log, "EGL hardware-acceleration enabled");
         let dmabuf_formats = renderer.dmabuf_formats().cloned().collect::<Vec<_>>();
         let mut state = DmabufState::new();
-        let global =
-            state.create_global::<StarlandState<X11Data>, _>(&display.handle(), dmabuf_formats, log.clone());
+        let global = state.create_global::<StarlandState<X11Data>, _>(
+            &display.handle(),
+            dmabuf_formats,
+            log.clone(),
+        );
         Some((state, global))
     } else {
         None
@@ -147,10 +157,12 @@ pub fn run_x11(log: Logger) {
     };
 
     #[cfg(feature = "debug")]
-    let fps_image =
-        image::io::Reader::with_format(std::io::Cursor::new(FPS_NUMBERS_PNG), image::ImageFormat::Png)
-            .decode()
-            .unwrap();
+    let fps_image = image::io::Reader::with_format(
+        std::io::Cursor::new(FPS_NUMBERS_PNG),
+        image::ImageFormat::Png,
+    )
+    .decode()
+    .unwrap();
     #[cfg(feature = "debug")]
     let fps_texture = renderer
         .import_memory(
@@ -242,7 +254,10 @@ pub fn run_x11(log: Logger) {
             #[cfg(feature = "debug")]
             fps_element.update_fps(fps);
 
-            let (buffer, age) = backend_data.surface.buffer().expect("gbm device was destroyed");
+            let (buffer, age) = backend_data
+                .surface
+                .buffer()
+                .expect("gbm device was destroyed");
             if let Err(err) = backend_data.renderer.bind(buffer) {
                 error!(log, "Error while binding buffer: {}", err);
                 continue;

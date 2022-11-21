@@ -26,4 +26,6 @@ pub mod x11;
 #[cfg(feature = "xwayland")]
 pub mod xwayland;
 
-pub use state::{StarlandState, CalloopData, ClientState};
+pub mod config;
+
+pub use state::{CalloopData, ClientState, StarlandState};

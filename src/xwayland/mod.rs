@@ -13,8 +13,8 @@ use x11rb::{
     protocol::{
         composite::{ConnectionExt as _, Redirect},
         xproto::{
-            ChangeWindowAttributesAux, ConfigWindow, ConfigureWindowAux, ConnectionExt as _, EventMask,
-            Window as X11Window, WindowClass,
+            ChangeWindowAttributesAux, ConfigWindow, ConfigureWindowAux, ConnectionExt as _,
+            EventMask, Window as X11Window, WindowClass,
         },
         Event,
     },
@@ -120,7 +120,10 @@ impl X11State {
             log: log.clone(),
         };
 
-        Ok((wm, X11Source::new(conn, win, atoms._STARLAND_CLOSE_CONNECTION, log)))
+        Ok((
+            wm,
+            X11Source::new(conn, win, atoms._STARLAND_CLOSE_CONNECTION, log),
+        ))
     }
 
     fn handle_event(
@@ -217,7 +220,10 @@ impl X11State {
         location: Point<i32, Logical>,
         space: &mut Space<Window>,
     ) {
-        debug!(self.log, "Matched X11 surface {:x?} to {:x?}", window, surface);
+        debug!(
+            self.log,
+            "Matched X11 surface {:x?} to {:x?}", window, surface
+        );
 
         if give_role(&surface, "x11_surface").is_err() {
             // It makes no sense to post a protocol error here since that would only kill Xwayland
@@ -231,13 +237,20 @@ impl X11State {
 }
 
 // Called when a WlSurface commits.
-pub fn commit_hook(surface: &WlSurface, dh: &DisplayHandle, state: &mut X11State, space: &mut Space<Window>) {
+pub fn commit_hook(
+    surface: &WlSurface,
+    dh: &DisplayHandle,
+    state: &mut X11State,
+    space: &mut Space<Window>,
+) {
     if let Ok(client) = dh.get_client(surface.id()) {
         // Is this the Xwayland client?
         if client == state.client {
             // Is the surface among the unpaired surfaces (see comment next to WL_SURFACE_ID
             // handling above)
-            if let Some((window, location)) = state.unpaired_surfaces.remove(&surface.id().protocol_id()) {
+            if let Some((window, location)) =
+                state.unpaired_surfaces.remove(&surface.id().protocol_id())
+            {
                 state.new_window(window, surface.clone(), location, space);
             }
         }

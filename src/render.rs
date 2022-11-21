@@ -38,7 +38,10 @@ pub fn render_output<'a, R>(
     damage_tracked_renderer: &mut DamageTrackedRenderer,
     age: usize,
     log: &slog::Logger,
-) -> Result<(Option<Vec<Rectangle<i32, Physical>>>, RenderElementStates), DamageTrackedRendererError<R>>
+) -> Result<
+    (Option<Vec<Rectangle<i32, Physical>>>, RenderElementStates),
+    DamageTrackedRendererError<R>,
+>
 where
     R: Renderer + ImportAll,
     R::TextureId: Clone + 'static,
@@ -53,14 +56,21 @@ where
         }
 
         let scale = output.current_scale().fractional_scale().into();
-        let window_render_elements = AsRenderElements::<R>::render_elements(&window, (0, 0).into(), scale);
+        let window_render_elements =
+            AsRenderElements::<R>::render_elements(&window, (0, 0).into(), scale);
 
         let render_elements = custom_elements
             .iter()
             .chain(window_render_elements.iter())
             .collect::<Vec<_>>();
 
-        damage_tracked_renderer.render_output(renderer, age, &render_elements, CLEAR_COLOR, log.clone())
+        damage_tracked_renderer.render_output(
+            renderer,
+            age,
+            &render_elements,
+            CLEAR_COLOR,
+            log.clone(),
+        )
     } else {
         desktop::space::render_output(
             output,
