@@ -18,14 +18,12 @@
 			flake = false;
 		};
 
-		# utilities for reading Cargo.toml
-		naersk = {
-			url = "github:nmattia/naersk";
-			inputs.nixpkgs.follows = "nixpkgs";
-		};
+		# smithay = {
+		# 	url = "./smithay";
+		# };
 	};
 
-	outputs = { self, nixpkgs, utils, rust-overlay, crate2nix, naersk, ... }:
+	outputs = { self, nixpkgs, utils, rust-overlay, crate2nix, ... }:
 	utils.lib.eachDefaultSystem(system:
 	let
 		cargoToml = (builtins.fromTOML (builtins.readFile ./Cargo.toml));
@@ -33,7 +31,7 @@
 		version = "${cargoToml.package.version}";
 
 		# environment variables
-		# RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
+		RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
 		# PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
 
 		pkgs = import nixpkgs {
@@ -53,10 +51,8 @@
 	in let
 
 			deps = with pkgs; [
-				# nativeBuildInputs
 				openssl.dev pkgconfig pkg-config
 
-				# buildInputs
 				rustc cargo pkgconfig nixpkgs-fmt pkg-config
 
 				wayland
@@ -88,9 +84,8 @@
 			# Needed by rust-analyzer to function
 			RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
 			
-			nativeBuildInputs = with pkgs; [] ++ deps;
-
-			buildInputs = with pkgs; [] ++ deps;
+			nativeBuildInputs = deps;
+			buildInputs = deps;
 
 			inherit (import "${crate2nix}/tools.nix" { inherit pkgs; }) generatedCargoNix;
 
@@ -104,10 +99,14 @@
 				defaultCrateOverrides = pkgs.defaultCrateOverrides // {
 					${name} = oldAttrs: {
 						inherit buildInputs nativeBuildInputs;
-					}
+					};
+
+					preBuild = ''
+						git submodule update
+					'';
 
 					postFixup = ''
-						patchelf --set-rpath ${rpath} $out/bin/starland
+						patchelf --set-rpath ${rpath} $out/bin/${name}
 					'';
 				};
 			};
@@ -128,8 +127,8 @@
 
 			# `nix develop`
 			devShell = pkgs.mkShell {
-				inherit buildInputs nativeBuildInputs rpath;
-			} // buildEnvVars;
+				inherit buildInputs nativeBuildInputs rpath RUST_SRC_PATH;
+			};
 		}
 	);
 }
