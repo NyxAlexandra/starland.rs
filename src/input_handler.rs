@@ -881,11 +881,6 @@ fn process_keyboard_shortcut(
     config: Config,
 ) -> Option<KeyAction> {
     for i in 0..config.keybindings.len() {
-        // println!("keysym: {keysym}");
-        // println!("i: {i}");
-        // println!("config.keybindings: {:?}", config.keybindings);
-        // println!("config.keybindings.len(): {}", config.keybindings.len());
-        // println!("config.keybindings[i]: {:?}", config.keybindings[i]);
         if config.keybindings[i].mods_pressed(modstates) && config.keybindings[i].key == keysym {
             return Some(config.keybindings[i].action.clone());
         } else {}
