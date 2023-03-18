@@ -3,14 +3,13 @@ use std::cell::RefCell;
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
     desktop::{
-        find_popup_root_surface, layer_map_for_output, Kind as SurfaceKind, LayerSurface,
-        PopupKeyboardGrab, PopupKind, PopupManager, PopupPointerGrab, PopupUngrabStrategy, Space,
-        Window, WindowSurfaceType,
+        find_popup_root_surface, layer_map_for_output, Kind as SurfaceKind, LayerSurface, PopupKeyboardGrab,
+        PopupKind, PopupManager, PopupPointerGrab, PopupUngrabStrategy, Space, Window, WindowSurfaceType,
     },
     input::{
         pointer::{
-            AxisFrame, ButtonEvent, Focus, GrabStartData as PointerGrabStartData, MotionEvent,
-            PointerGrab, PointerInnerHandle,
+            AxisFrame, ButtonEvent, Focus, GrabStartData as PointerGrabStartData, MotionEvent, PointerGrab,
+            PointerInnerHandle,
         },
         Seat,
     },
@@ -26,8 +25,8 @@ use smithay::{
     wayland::{
         buffer::BufferHandler,
         compositor::{
-            get_parent, is_sync_subsurface, with_states, with_surface_tree_upward,
-            CompositorHandler, CompositorState, TraversalAction,
+            get_parent, is_sync_subsurface, with_states, with_surface_tree_upward, CompositorHandler,
+            CompositorState, TraversalAction,
         },
         seat::WaylandFocus,
         shell::{
@@ -45,7 +44,7 @@ use smithay::{
 
 use crate::{
     focus::FocusTarget,
-    state::{Backend, StarlandState},
+    state::{StarlandState, Backend},
 };
 
 struct MoveSurfaceGrab<B: 'static> {
@@ -245,12 +244,12 @@ impl<BackendData> PointerGrab<StarlandState<BackendData>> for ResizeSurfaceGrab<
                     let mut location = data.space.element_location(&self.window).unwrap();
 
                     if self.edges.intersects(ResizeEdge::LEFT) {
-                        location.x = self.initial_window_location.x
-                            + (self.initial_window_size.w - geometry.size.w);
+                        location.x =
+                            self.initial_window_location.x + (self.initial_window_size.w - geometry.size.w);
                     }
                     if self.edges.intersects(ResizeEdge::TOP) {
-                        location.y = self.initial_window_location.y
-                            + (self.initial_window_size.h - geometry.size.h);
+                        location.y =
+                            self.initial_window_location.y + (self.initial_window_size.h - geometry.size.h);
                     }
 
                     data.space.map_element(self.window.clone(), location, true);
@@ -263,8 +262,7 @@ impl<BackendData> PointerGrab<StarlandState<BackendData>> for ResizeSurfaceGrab<
                         .unwrap()
                         .borrow_mut();
                     if let ResizeState::Resizing(resize_data) = data.resize_state {
-                        data.resize_state =
-                            ResizeState::WaitingForFinalAck(resize_data, event.serial);
+                        data.resize_state = ResizeState::WaitingForFinalAck(resize_data, event.serial);
                     } else {
                         panic!("invalid resize state: {:?}", data.resize_state);
                     }
@@ -399,12 +397,7 @@ impl<BackendData: Backend> XdgShellHandler for StarlandState<BackendData> {
         }
     }
 
-    fn reposition_request(
-        &mut self,
-        surface: PopupSurface,
-        positioner: PositionerState,
-        token: u32,
-    ) {
+    fn reposition_request(&mut self, surface: PopupSurface, positioner: PositionerState, token: u32) {
         surface.with_pending_state(|state| {
             // NOTE: This is again a simplification, a proper compositor would
             // calculate the geometry of the popup here. For simplicity we just
@@ -447,10 +440,7 @@ impl<BackendData: Backend> XdgShellHandler for StarlandState<BackendData> {
 
         // If surface is maximized then unmaximize it
         let current_state = surface.current_state();
-        if current_state
-            .states
-            .contains(xdg_toplevel::State::Maximized)
-        {
+        if current_state.states.contains(xdg_toplevel::State::Maximized) {
             surface.with_pending_state(|state| {
                 state.states.unset(xdg_toplevel::State::Maximized);
                 state.size = None;
@@ -594,18 +584,13 @@ impl<BackendData: Backend> XdgShellHandler for StarlandState<BackendData> {
         }
     }
 
-    fn fullscreen_request(
-        &mut self,
-        surface: ToplevelSurface,
-        mut wl_output: Option<wl_output::WlOutput>,
-    ) {
+    fn fullscreen_request(&mut self, surface: ToplevelSurface, mut wl_output: Option<wl_output::WlOutput>) {
         // NOTE: This is only one part of the solution. We can set the
         // location and configure size here, but the surface should be rendered fullscreen
         // independently from its buffer size
         let wl_surface = surface.wl_surface();
 
-        let output_geometry =
-            fullscreen_output_geometry(wl_surface, wl_output.as_ref(), &mut self.space);
+        let output_geometry = fullscreen_output_geometry(wl_surface, wl_output.as_ref(), &mut self.space);
 
         if let Some(geometry) = output_geometry {
             let output = wl_output
@@ -629,9 +614,7 @@ impl<BackendData: Backend> XdgShellHandler for StarlandState<BackendData> {
                 .find(|window| window.toplevel().wl_surface() == wl_surface)
                 .unwrap();
             window.configure();
-            output
-                .user_data()
-                .insert_if_missing(FullscreenSurface::default);
+            output.user_data().insert_if_missing(FullscreenSurface::default);
             output
                 .user_data()
                 .get::<FullscreenSurface>()
@@ -702,8 +685,7 @@ impl<BackendData: Backend> XdgShellHandler for StarlandState<BackendData> {
                         .outputs()
                         .find_map(|o| {
                             let map = layer_map_for_output(o);
-                            map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
-                                .cloned()
+                            map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL).cloned()
                         })
                         .map(FocusTarget::LayerSurface)
                 })
@@ -725,8 +707,7 @@ impl<BackendData: Backend> XdgShellHandler for StarlandState<BackendData> {
                 if let Some(pointer) = seat.get_pointer() {
                     if pointer.is_grabbed()
                         && !(pointer.has_grab(serial)
-                            || pointer
-                                .has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial())))
+                            || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial())))
                     {
                         grab.ungrab(PopupUngrabStrategy::All);
                         return;
@@ -755,8 +736,7 @@ impl<BackendData> WlrLayerShellHandler for StarlandState<BackendData> {
             .and_then(Output::from_resource)
             .unwrap_or_else(|| self.space.outputs().next().unwrap().clone());
         let mut map = layer_map_for_output(&output);
-        map.map_layer(&LayerSurface::new(surface, namespace))
-            .unwrap();
+        map.map_layer(&LayerSurface::new(surface, namespace)).unwrap();
     }
 }
 

@@ -1,18 +1,10 @@
 [package]
-authors = ["Victor Berger <victor.berger@m4x.org>", "Drakulix (Victoria Brekenfeld)"]
+authors = ["Alexandra Reaves <nyxalexandra@proton.me>"]
 edition = "2018"
-license = "MIT"
+license = "GPL-3.0-only"
 name = "starland"
 publish = false
-version = "0.0.1"
-
-[[bin]]
-name = "starland"
-path = "src/main.rs"
-
-[[bin]]
-name = "starctl"
-path = "src/starctl/main.rs"
+version = "0.1.0"
 
 [dependencies]
 bitflags = "1.2.1"
@@ -29,9 +21,13 @@ xcursor = {version = "0.3.3", optional = true}
 xkbcommon = "0.5.0"
 
 [dependencies.smithay]
+path = "./smithay/"
+# git = "https://github.com/nyxalexandra/smithay.git"
 default-features = false
 features = ["desktop", "wayland_frontend", "slog-stdlog"]
-path = "./smithay"
+
+# [patch."https://github.com/Smithay/smithay.git"]
+# smithay = { git = "https://github.com/nyxalexandra/smithay", rev = "89a46b2c0785ba15d44dcf124dc636cb82dbea20" }
 
 [dependencies.x11rb]
 default-features = false
@@ -65,3 +61,4 @@ udev = [
 winit = ["smithay/backend_winit"]
 x11 = ["smithay/backend_x11", "x11rb", "egl", "smithay/renderer_gl"]
 xwayland = ["smithay/xwayland", "x11rb", "smithay/x11rb_event_source"]
+

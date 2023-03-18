@@ -1,11 +1,6 @@
 use std::{convert::TryInto, process::Command, sync::atomic::Ordering};
 
-use crate::{
-    config::Config,
-    focus::FocusTarget,
-    shell::FullscreenSurface,
-    StarlandState,
-};
+use crate::{focus::FocusTarget, shell::FullscreenSurface, StarlandState};
 
 #[cfg(feature = "udev")]
 use crate::udev::UdevData;
@@ -126,52 +121,44 @@ impl<Backend> StarlandState<Backend> {
             .unwrap_or(false);
 
         let action = keyboard
-            .input(
-                self,
-                keycode,
-                state,
-                serial,
-                time,
-                |_, modifiers, handle| {
-                    let keysym = handle.modified_sym();
+            .input(self, keycode, state, serial, time, |_, modifiers, handle| {
+                let keysym = handle.modified_sym();
 
-                    debug!(log, "keysym";
-                        "state" => format!("{:?}", state),
-                        "mods" => format!("{:?}", modifiers),
-                        "keysym" => ::xkbcommon::xkb::keysym_get_name(keysym)
-                    );
+                debug!(log, "keysym";
+                    "state" => format!("{:?}", state),
+                    "mods" => format!("{:?}", modifiers),
+                    "keysym" => ::xkbcommon::xkb::keysym_get_name(keysym)
+                );
 
-                    // If the key is pressed and triggered a action
-                    // we will not forward the key to the client.
-                    // Additionally add the key to the suppressed keys
-                    // so that we can decide on a release if the key
-                    // should be forwarded to the client or not.
-                    if let KeyState::Pressed = state {
-                        if !inhibited {
-                            let action =
-                                process_keyboard_shortcut(*modifiers, keysym, Config::get());
+                // If the key is pressed and triggered a action
+                // we will not forward the key to the client.
+                // Additionally add the key to the suppressed keys
+                // so that we can decide on a release if the key
+                // should be forwarded to the client or not.
+                if let KeyState::Pressed = state {
+                    if !inhibited {
+                        let action = process_keyboard_shortcut(*modifiers, keysym);
 
-                            if action.is_some() {
-                                suppressed_keys.push(keysym);
-                            }
-
-                            action
-                                .map(FilterResult::Intercept)
-                                .unwrap_or(FilterResult::Forward)
-                        } else {
-                            FilterResult::Forward
+                        if action.is_some() {
+                            suppressed_keys.push(keysym);
                         }
+
+                        action
+                            .map(FilterResult::Intercept)
+                            .unwrap_or(FilterResult::Forward)
                     } else {
-                        let suppressed = suppressed_keys.contains(&keysym);
-                        if suppressed {
-                            suppressed_keys.retain(|k| *k != keysym);
-                            FilterResult::Intercept(KeyAction::None)
-                        } else {
-                            FilterResult::Forward
-                        }
+                        FilterResult::Forward
                     }
-                },
-            )
+                } else {
+                    let suppressed = suppressed_keys.contains(&keysym);
+                    if suppressed {
+                        suppressed_keys.retain(|k| *k != keysym);
+                        FilterResult::Intercept(KeyAction::None)
+                    } else {
+                        FilterResult::Forward
+                    }
+                }
+            })
             .unwrap_or(KeyAction::None);
 
         self.suppressed_keys = suppressed_keys;
@@ -212,11 +199,7 @@ impl<Backend> StarlandState<Backend> {
         // see here for a discussion about that issue:
         // https://gitlab.freedesktop.org/wayland/wayland/-/issues/294
         if !pointer.is_grabbed() && (!keyboard.is_grabbed() || input_method.keyboard_grabbed()) {
-            let output = self
-                .space
-                .output_under(self.pointer_location)
-                .next()
-                .cloned();
+            let output = self.space.output_under(self.pointer_location).next().cloned();
             if let Some(output) = output.as_ref() {
                 let output_geo = self.space.output_geometry(output).unwrap();
                 if let Some(window) = output
@@ -375,12 +358,7 @@ impl<Backend: crate::state::Backend> StarlandState<Backend> {
 
                     let current_scale = output.current_scale().fractional_scale();
                     let new_scale = current_scale + 0.25;
-                    output.change_current_state(
-                        None,
-                        None,
-                        Some(Scale::Fractional(new_scale)),
-                        None,
-                    );
+                    output.change_current_state(None, None, Some(Scale::Fractional(new_scale)), None);
 
                     crate::shell::fixup_positions(&mut self.space);
                     self.backend_data.reset_buffers(&output);
@@ -396,12 +374,7 @@ impl<Backend: crate::state::Backend> StarlandState<Backend> {
 
                     let current_scale = output.current_scale().fractional_scale();
                     let new_scale = f64::max(1.0, current_scale - 0.25);
-                    output.change_current_state(
-                        None,
-                        None,
-                        Some(Scale::Fractional(new_scale)),
-                        None,
-                    );
+                    output.change_current_state(None, None, Some(Scale::Fractional(new_scale)), None);
 
                     crate::shell::fixup_positions(&mut self.space);
                     self.backend_data.reset_buffers(&output);
@@ -461,11 +434,7 @@ impl<Backend: crate::state::Backend> StarlandState<Backend> {
 
 #[cfg(feature = "udev")]
 impl StarlandState<UdevData> {
-    pub fn process_input_event<B: InputBackend>(
-        &mut self,
-        dh: &DisplayHandle,
-        event: InputEvent<B>,
-    ) {
+    pub fn process_input_event<B: InputBackend>(&mut self, dh: &DisplayHandle, event: InputEvent<B>) {
         match event {
             InputEvent::Keyboard { event, .. } => match self.keyboard_key_to_action::<B>(event) {
                 #[cfg(feature = "udev")]
@@ -502,12 +471,7 @@ impl StarlandState<UdevData> {
                             output.current_scale().fractional_scale(),
                         );
                         let new_scale = scale + 0.25;
-                        output.change_current_state(
-                            None,
-                            None,
-                            Some(Scale::Fractional(new_scale)),
-                            None,
-                        );
+                        output.change_current_state(None, None, Some(Scale::Fractional(new_scale)), None);
 
                         let rescale = scale as f64 / new_scale as f64;
                         let output_location = output_location.to_f64();
@@ -546,12 +510,7 @@ impl StarlandState<UdevData> {
                             output.current_scale().fractional_scale(),
                         );
                         let new_scale = f64::max(1.0, scale - 0.25);
-                        output.change_current_state(
-                            None,
-                            None,
-                            Some(Scale::Fractional(new_scale)),
-                            None,
-                        );
+                        output.change_current_state(None, None, Some(Scale::Fractional(new_scale)), None);
 
                         let rescale = scale as f64 / new_scale as f64;
                         let output_location = output_location.to_f64();
@@ -586,15 +545,11 @@ impl StarlandState<UdevData> {
                 },
             },
             InputEvent::PointerMotion { event, .. } => self.on_pointer_move::<B>(dh, event),
-            InputEvent::PointerMotionAbsolute { event, .. } => {
-                self.on_pointer_move_absolute::<B>(dh, event)
-            }
+            InputEvent::PointerMotionAbsolute { event, .. } => self.on_pointer_move_absolute::<B>(dh, event),
             InputEvent::PointerButton { event, .. } => self.on_pointer_button::<B>(event),
             InputEvent::PointerAxis { event, .. } => self.on_pointer_axis::<B>(dh, event),
             InputEvent::TabletToolAxis { event, .. } => self.on_tablet_tool_axis::<B>(event),
-            InputEvent::TabletToolProximity { event, .. } => {
-                self.on_tablet_tool_proximity::<B>(dh, event)
-            }
+            InputEvent::TabletToolProximity { event, .. } => self.on_tablet_tool_proximity::<B>(dh, event),
             InputEvent::TabletToolTip { event, .. } => self.on_tablet_tool_tip::<B>(event),
             InputEvent::TabletToolButton { event, .. } => self.on_tablet_button::<B>(event),
             InputEvent::DeviceAdded { device } => {
@@ -622,11 +577,7 @@ impl StarlandState<UdevData> {
         }
     }
 
-    fn on_pointer_move<B: InputBackend>(
-        &mut self,
-        _dh: &DisplayHandle,
-        evt: B::PointerMotionEvent,
-    ) {
+    fn on_pointer_move<B: InputBackend>(&mut self, _dh: &DisplayHandle, evt: B::PointerMotionEvent) {
         let serial = SCOUNTER.next_serial();
         self.pointer_location += evt.delta();
 
@@ -655,9 +606,10 @@ impl StarlandState<UdevData> {
     ) {
         let serial = SCOUNTER.next_serial();
 
-        let max_x = self.space.outputs().fold(0, |acc, o| {
-            acc + self.space.output_geometry(o).unwrap().size.w
-        });
+        let max_x = self
+            .space
+            .outputs()
+            .fold(0, |acc, o| acc + self.space.output_geometry(o).unwrap().size.w);
 
         let max_h_output = self
             .space
@@ -814,9 +766,10 @@ impl StarlandState<UdevData> {
         }
 
         let (pos_x, pos_y) = pos.into();
-        let max_x = self.space.outputs().fold(0, |acc, o| {
-            acc + self.space.output_geometry(o).unwrap().size.w
-        });
+        let max_x = self
+            .space
+            .outputs()
+            .fold(0, |acc, o| acc + self.space.output_geometry(o).unwrap().size.w);
         let clamped_x = pos_x.max(0.0).min(max_x as f64);
         let max_y = self
             .space
@@ -837,8 +790,8 @@ impl StarlandState<UdevData> {
 }
 
 /// Possible results of a keyboard action
-#[derive(Debug, Clone)]
-pub enum KeyAction {
+#[derive(Debug)]
+enum KeyAction {
     /// Quit the compositor
     Quit,
     /// Trigger a vt-switch
@@ -851,40 +804,30 @@ pub enum KeyAction {
     ScaleDown,
     /// Do nothing more
     None,
-
-    /// Tile window
-    Tile(TileAction),
-
-    /// Execute Rust code
-    Exec(),
 }
 
-/// Types of tiling operations that can be performed
-#[derive(Debug, Clone)]
-pub enum TileAction {
-    /// Relative directions
-    Up,
-    Down,
-    Left,
-    Right,
-
-    /// Move by index by amount
-    NextIndex(i32),
-    PrevIndex(i32),
-}
-
-/// Returns corresponding `KeyAction` if
-/// correct mods and keys are pressed.
-fn process_keyboard_shortcut(
-    modstates: ModifiersState,
-    keysym: Keysym, // Currently pressed key
-    config: Config,
-) -> Option<KeyAction> {
-    for i in 0..config.keybindings.len() {
-        if config.keybindings[i].mods_pressed(modstates) && config.keybindings[i].key == keysym {
-            return Some(config.keybindings[i].action.clone());
-        } else {}
+fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Option<KeyAction> {
+    if modifiers.ctrl && modifiers.alt && keysym == xkb::KEY_BackSpace
+        || modifiers.logo && keysym == xkb::KEY_q
+    {
+        // ctrl+alt+backspace = quit
+        // logo + q = quit
+        Some(KeyAction::Quit)
+    } else if (xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12).contains(&keysym) {
+        // VTSwitch
+        Some(KeyAction::VtSwitch(
+            (keysym - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
+        ))
+    } else if modifiers.logo && keysym == xkb::KEY_Return {
+        // run terminal
+        Some(KeyAction::Run("weston-terminal".into()))
+    } else if modifiers.logo && (xkb::KEY_1..=xkb::KEY_9).contains(&keysym) {
+        Some(KeyAction::Screen((keysym - xkb::KEY_1) as usize))
+    } else if modifiers.logo && modifiers.shift && keysym == xkb::KEY_M {
+        Some(KeyAction::ScaleDown)
+    } else if modifiers.logo && modifiers.shift && keysym == xkb::KEY_P {
+        Some(KeyAction::ScaleUp)
+    } else {
+        None
     }
-    // If not, do nothing
-    None
 }

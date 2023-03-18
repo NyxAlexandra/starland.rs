@@ -1,3 +1,3 @@
 [submodule "smithay"]
 	path = smithay
-	url = https://github.com/smithay/smithay
+	url = git@github.com:nyxalexandra/smithay
