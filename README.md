@@ -1,7 +1,9 @@
-# starland
+
+# Starland
 
 TODO: summary
 
-![](docs/showcase.png)
+![showcase.png](docs/showcase.png)
 
-[todo](TODO.md) | [docs](docs/README.md)
+[docs](docs/README.md) | [changelog](CHANGELOG.md) | [todo](TODO.md)
+
